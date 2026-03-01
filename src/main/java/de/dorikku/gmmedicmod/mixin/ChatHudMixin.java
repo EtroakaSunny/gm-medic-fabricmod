@@ -13,10 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Mixin into ChatHud to intercept messages when they're added to the chat display.
- * In MC 1.21.10, the public addMessage method has 3 parameters:
- *   addMessage(Text, MessageSignatureData, MessageIndicator)
- * This is a fallback — MessageHandlerMixin is the primary intercept point.
+ * Fallback intercept — catches messages when they are added to the chat HUD.
  */
 @Mixin(ChatHud.class)
 public class ChatHudMixin {
@@ -24,10 +21,9 @@ public class ChatHudMixin {
     @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"))
     private void onAddMessage(Text message, @Nullable MessageSignatureData signature, @Nullable MessageIndicator indicator, CallbackInfo ci) {
         try {
-            GMMedic.LOGGER.info("[GM-Medic][ChatHud] addMessage: {}", message.getString());
             ChatMessageHandler.processFromMixin(message);
         } catch (Exception e) {
-            GMMedic.LOGGER.error("[GM-Medic][ChatHud] Error in addMessage intercept", e);
+            GMMedic.LOGGER.error("[GM-Medic] Error in ChatHud intercept", e);
         }
     }
 }

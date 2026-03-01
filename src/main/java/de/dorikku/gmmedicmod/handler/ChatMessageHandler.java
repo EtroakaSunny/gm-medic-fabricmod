@@ -14,96 +14,77 @@ import java.time.Instant;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Central handler for all chat messages. Detects duty status, emergency call
+ * transmissions, call acceptance, rejection, withdrawal, and other FUNK events.
+ *
+ * GermanMiner uses two message formats for FUNK:
+ *   - Real server:  Ⓛ [Rank] Player » message   (Ⓛ = U+24C1)
+ *   - Simulation:   [FUNK] (Rank) Player » message
+ */
 public class ChatMessageHandler {
 
     private static final EmergencyCallManager manager = EmergencyCallManager.getInstance();
 
+    // Deduplication ring buffer — prevents the same message being processed multiple times
+    // across the three mixin intercept points (PacketMixin, MessageHandler, ChatHud).
     private static final int DEDUP_SIZE = 10;
     private static final long[] recentHashes = new long[DEDUP_SIZE];
     private static int recentIndex = 0;
 
-    // Strip ALL §X formatting codes
-    private static final Pattern FORMAT_CODE_PATTERN = Pattern.compile("\u00a7.");
+    // --- Patterns ---
 
-    // ---- FUNK patterns ----
-    // Real GermanMiner server uses:  Ⓛ [Rank] Player » message  (Ⓛ = U+24C1, circled L for Lokal/Funk)
-    // Simulation/old format uses:    [FUNK] (Rank) Player » message
-    // We detect FUNK by checking for EITHER prefix.
+    private static final Pattern FORMAT_CODE = Pattern.compile("\u00a7.");
 
-    // Accept pattern: matches both formats
-    //   "[FUNK] (Rank) Name » Ich nehme den Notruf von X entgegen!"
-    //   "Ⓛ [Rank] Name » Ich nehme den Notruf von X entgegen!"
-    //   Also handles cases where the » is some Unicode arrow/separator
-    private static final Pattern ACCEPT_PATTERN =
-            Pattern.compile("(?:\\[FUNK\\]\\s*\\([^)]*\\)|[\u24B6-\u24E9]\\s*\\[[^\\]]*\\])\\s+(.{1,16})\\s*.\\s*Ich nehme den Notruf von (.+?)\\s*entgegen!");
-
-    private static final Pattern LOCATION_PATTERN =
+    private static final Pattern LOCATION =
             Pattern.compile("X:\\s*(-?[\\d.]+)[,\\s]+Y:\\s*(-?[\\d.]+)[,\\s]+Z:\\s*(-?[\\d.]+)\\)?(?:\\s+\\(([^)]+)\\))?");
 
-    private static final Pattern REMAINING_TIME_PATTERN =
+    private static final Pattern REMAINING_TIME =
             Pattern.compile("(?:(\\d+)\\s*Minuten?[,\\s]+)?(\\d+)\\s*Sekunden?");
 
-    private static final Pattern WITHDRAW_PATTERN = Pattern.compile("Spieler (.+?) hat");
-    private static final Pattern REVIVE_PATTERN = Pattern.compile("habe (.+?) wieder");
-    private static final Pattern LOGOUT_PATTERN = Pattern.compile("Spieler (.+?) hat sich ausgeloggt");
-    private static final Pattern REACHED_PATTERN = Pattern.compile("Ich habe.*\\((.*)\\) erreicht");
-    private static final Pattern REJECTED_PATTERN = Pattern.compile("von (.+?) mit");
+    // Accepts both FUNK formats: "[FUNK] (Rank) Name »" and "Ⓛ [Rank] Name »"
+    private static final Pattern ACCEPT =
+            Pattern.compile("(?:\\[FUNK]\\s*\\([^)]*\\)|[\u24B6-\u24E9]\\s*\\[[^]]*])\\s+(.{1,16})\\s*.\\s*Ich nehme den Notruf von (.+?)\\s*entgegen!");
 
-    /**
-     * Check if a stripped message is a FUNK-type message.
-     * Real server uses Ⓛ (U+24C1) or other circled letters, simulation uses [FUNK].
-     */
-    private static boolean isFunkMessage(String msg) {
-        if (msg.contains("[FUNK]")) return true;
-        // Check for circled letter prefixes used by real GermanMiner server
-        for (int i = 0; i < msg.length(); i++) {
-            char c = msg.charAt(i);
-            if ((c >= '\u24B6' && c <= '\u24CF') || (c >= '\u24D0' && c <= '\u24E9')) {
-                return true;
-            }
-        }
-        return false;
-    }
+    private static final Pattern REJECT_CALLER =
+            Pattern.compile("Ich habe den Notruf von (.+?)(?:\\s+mit folgendem Grund)?\\s+zur\u00fcckgewiesen");
 
-    /**
-     * Extract player name from a FUNK message.
-     * Format 1: "[FUNK] (Rank) PlayerName » message"
-     * Format 2: "Ⓛ [Rank] PlayerName » message"
-     * Returns null if cannot extract.
-     */
-    private static String extractFunkSender(String msg) {
-        // Try format 1: [FUNK] (Rank) PlayerName »
-        Pattern p1 = Pattern.compile("\\[FUNK\\]\\s*\\([^)]*\\)\\s+(.+?)\\s*\u00bb");
-        Matcher m1 = p1.matcher(msg);
-        if (m1.find()) return m1.group(1).trim();
+    private static final Pattern WITHDRAW_CALLER = Pattern.compile("Spieler (.+?) hat");
+    private static final Pattern REVIVE_CALLER   = Pattern.compile("habe (.+?) wieder");
+    private static final Pattern LOGOUT_CALLER   = Pattern.compile("Spieler (.+?) hat sich ausgeloggt");
+    private static final Pattern REACHED_CALLER  = Pattern.compile("Ich habe.*\\((.*)\\) erreicht");
 
-        // Try format 2: Ⓛ [Rank] PlayerName »  (circled letter followed by [Rank])
-        Pattern p2 = Pattern.compile("[\u24B6-\u24E9]\\s*\\[[^\\]]*\\]\\s+(.+?)\\s*\u00bb");
-        Matcher m2 = p2.matcher(msg);
-        if (m2.find()) return m2.group(1).trim();
+    // Extracts "PlayerName" from FUNK message before the » separator
+    private static final Pattern FUNK_SENDER_SIM  = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(.+?)\\s*\u00bb");
+    private static final Pattern FUNK_SENDER_REAL = Pattern.compile("[\u24B6-\u24E9]\\s*\\[[^]]*]\\s+(.+?)\\s*\u00bb");
+    private static final Pattern FUNK_SENDER_ANY  = Pattern.compile("[\\])]\\s+(.+?)\\s*\u00bb");
 
-        // Fallback: try to find "PlayerName »" after any bracket-enclosed prefix
-        Pattern p3 = Pattern.compile("[\\])]\\s+(.+?)\\s*\u00bb");
-        Matcher m3 = p3.matcher(msg);
-        if (m3.find()) return m3.group(1).trim();
+    // Fallback accept patterns (used when the primary ACCEPT pattern misses)
+    private static final Pattern ACCEPT_FALLBACK =
+            Pattern.compile("(?:^|]\\s*|\\)\\s*)([A-Za-z0-9_]{1,16})\\s*.\\s*Ich nehme den Notruf von (.+?)\\s*entgegen!");
+    private static final Pattern ACCEPT_ULTRA_FALLBACK =
+            Pattern.compile("Ich nehme den Notruf von (.+?)\\s*entgegen!");
 
-        return null;
-    }
+    // --- Public entry points (called by Fabric events and mixins) ---
 
     public static void onGameMessage(Text message, boolean overlay) {
-        if (overlay) return;
-        processDeduped(message, "GAME");
+        if (!overlay) processDeduped(message);
     }
 
-    public static void onChatMessage(Text message, @Nullable SignedMessage signedMessage, @Nullable GameProfile sender, MessageType.Parameters params, Instant receptionTimestamp) {
-        processDeduped(message, "CHAT");
+    @SuppressWarnings("unused") // Parameters required by Fabric event signature
+    public static void onChatMessage(Text message, @Nullable SignedMessage signedMessage,
+                                     @Nullable GameProfile sender, MessageType.Parameters params,
+                                     Instant receptionTimestamp) {
+        processDeduped(message);
     }
 
     public static void processFromMixin(Text message) {
-        processDeduped(message, "MIXIN");
+        processDeduped(message);
     }
 
-    private static void processDeduped(Text message, String source) {
+    // --- Deduplication ---
+
+    private static void processDeduped(Text message) {
         try {
             String raw = message.getString();
             long hash = raw.hashCode() * 31L + (System.currentTimeMillis() / 50);
@@ -116,312 +97,251 @@ public class ChatMessageHandler {
                 recentIndex = (recentIndex + 1) % DEDUP_SIZE;
             }
 
-            GMMedic.LOGGER.info("[GM-Medic] [{}] message: {}", source, raw);
-
-            // Log Unicode codepoints for debugging unknown server formats
-            if (raw.length() > 0 && raw.length() < 300) {
-                StringBuilder cp = new StringBuilder();
-                for (int i = 0; i < Math.min(raw.length(), 50); i++) {
-                    char c = raw.charAt(i);
-                    if (c > 127) {
-                        cp.append(String.format("U+%04X ", (int) c));
-                    } else {
-                        cp.append(c);
-                    }
-                }
-                GMMedic.LOGGER.info("[GM-Medic] [{}] first50chars(unicode): {}", source, cp.toString().trim());
-            }
-
+            GMMedic.LOGGER.debug("[GM-Medic] Raw message: {}", raw);
             processMessage(raw);
         } catch (Exception e) {
-            GMMedic.LOGGER.error("[GM-Medic] Error processing {} message", source, e);
+            GMMedic.LOGGER.error("[GM-Medic] Error processing message", e);
         }
     }
 
+    // --- Message processing ---
+
     private static void processMessage(String msg) {
-        // Strip formatting codes
-        msg = FORMAT_CODE_PATTERN.matcher(msg).replaceAll("");
+        msg = FORMAT_CODE.matcher(msg).replaceAll("");
         msg = msg.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
 
-        GMMedic.LOGGER.info("[GM-Medic] stripped: {}", msg);
-
         boolean isFunk = isFunkMessage(msg);
-        GMMedic.LOGGER.info("[GM-Medic] isFunk={}, isZentrale={}, parsingState={}, inDuty={}",
-                isFunk, msg.contains("ZENTRALE"), manager.getState(), manager.isInDuty());
 
-        // ---- DUTY detection ----
+        // Duty on
         if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
             manager.setInDuty(true);
-            GMMedic.LOGGER.info("[GM-Medic] >>> Player is now ON DUTY (direct message)");
+            GMMedic.LOGGER.info("[GM-Medic] On duty (direct)");
             return;
         }
 
-        // Manual debug trigger: any message containing "TestDuty" forces duty on (works on any server)
+        // Debug trigger — type "TestDuty" in any chat to force duty on
         if (msg.contains("TestDuty")) {
             manager.setInDuty(true);
-            GMMedic.LOGGER.info("[GM-Medic] >>> Player is now ON DUTY (TestDuty trigger)");
+            GMMedic.LOGGER.info("[GM-Medic] On duty (TestDuty)");
             return;
         }
 
+        // Duty off
         if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) {
             manager.setInDuty(false);
-            GMMedic.LOGGER.info("[GM-Medic] >>> Player is now OFF DUTY (direct message)");
+            GMMedic.LOGGER.info("[GM-Medic] Off duty (direct)");
             return;
         }
 
-        // ---- FUNK-based duty detection ----
+        // FUNK-based duty detection (own messages only)
         if (isFunk) {
             String playerName = getPlayerName();
             String funkSender = extractFunkSender(msg);
-            GMMedic.LOGGER.info("[GM-Medic] FUNK detected. playerName={}, funkSender={}, msg={}", playerName, funkSender, msg);
+            boolean isOwn = isOwnMessage(playerName, funkSender, msg);
 
-            boolean isOwnMessage = false;
-            if (playerName != null && funkSender != null) {
-                isOwnMessage = funkSender.equalsIgnoreCase(playerName);
-                GMMedic.LOGGER.info("[GM-Medic] FUNK sender match check: funkSender='{}' == playerName='{}' -> {}", funkSender, playerName, isOwnMessage);
-            } else if (playerName != null) {
-                // Fallback: check if player name appears anywhere in the message
-                isOwnMessage = msg.contains(playerName);
-                GMMedic.LOGGER.info("[GM-Medic] FUNK fallback contains check: msg.contains('{}') -> {}", playerName, isOwnMessage);
-            }
-
-            if (isOwnMessage || playerName == null) {
+            if (isOwn) {
                 if (msg.contains("Ich bin wieder auf dem Server")) {
                     manager.setInDuty(true);
-                    GMMedic.LOGGER.info("[GM-Medic] >>> Player is now ON DUTY (FUNK join message, playerName={})", playerName);
+                    GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK join)");
                     return;
                 }
                 if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) {
                     manager.setInDuty(false);
-                    GMMedic.LOGGER.info("[GM-Medic] >>> Player is now OFF DUTY (FUNK leave message)");
+                    GMMedic.LOGGER.info("[GM-Medic] Off duty (FUNK leave)");
                     return;
                 }
             }
         }
 
-        // ---- Everything below requires being on duty ----
-        if (!manager.isInDuty()) {
-            GMMedic.LOGGER.info("[GM-Medic] Not in duty, skipping further processing for: {}", msg.length() > 80 ? msg.substring(0, 80) + "..." : msg);
-            return;
-        }
+        // Everything below requires being on duty
+        if (!manager.isInDuty()) return;
 
-        // ---- Call withdrawn by ZENTRALE ----
+        // Call withdrawn
         if (msg.contains("ZENTRALE") && msg.contains("hat seinen Notruf zur\u00fcckgezogen")) {
-            Matcher m = WITHDRAW_PATTERN.matcher(msg);
-            if (m.find()) {
-                String caller = m.group(1).trim();
-                manager.removeCallByCallerName(caller);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call WITHDRAWN: {}", caller);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not extract caller from withdraw message: {}", msg);
-            }
+            extractAndRemove(WITHDRAW_CALLER, msg, "withdrawn");
             return;
         }
 
-        // ---- Revive message ----
+        // Revived
         if (isFunk && msg.contains("Ich habe") && msg.contains("wiederbelebt")) {
-            Matcher m = REVIVE_PATTERN.matcher(msg);
-            if (m.find()) {
-                String caller = m.group(1).trim();
-                manager.removeCallByCallerName(caller);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call REVIVED: {}", caller);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not extract caller from revive message: {}", msg);
-            }
+            extractAndRemove(REVIVE_CALLER, msg, "revived");
             return;
         }
 
-        // ---- Logout message ----
+        // Logged out
         if (msg.contains("ZENTRALE") && msg.contains("hat sich ausgeloggt")) {
-            Matcher m = LOGOUT_PATTERN.matcher(msg);
-            if (m.find()) {
-                String caller = m.group(1).trim();
-                manager.removeCallByCallerName(caller);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call LOGOUT: {}", caller);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not extract caller from logout message: {}", msg);
-            }
+            extractAndRemove(LOGOUT_CALLER, msg, "logout");
             return;
         }
 
-        // ---- Reached message ----
+        // Reached
         if (isFunk && msg.contains("Ich habe den Notruf in") && msg.contains("erreicht")) {
-            Matcher m = REACHED_PATTERN.matcher(msg);
-            if (m.find()) {
-                String caller = m.group(1).trim();
-                manager.removeCallByCallerName(caller);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call REACHED: {}", caller);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not extract caller from reached message: {}", msg);
-            }
+            extractAndRemove(REACHED_CALLER, msg, "reached");
             return;
         }
 
-        // ---- Rejected message ----
-        // Real format: "Ⓛ [Azubi] JustinXII » Ich habe den Notruf von Dorikku zurückgewiesen"
-        // Sim format:  "[FUNK] (Azubi) JustinXII » Ich habe den Notruf von Dorikku mit folgendem Grund zurückgewiesen: ..."
+        // Rejected
         if (isFunk && msg.contains("Ich habe den Notruf von") && msg.contains("zur\u00fcckgewiesen")) {
-            // Extract caller name: "Ich habe den Notruf von <NAME> zurückgewiesen" or "von <NAME> mit folgendem Grund zurückgewiesen"
-            Pattern rejectCallerPattern = Pattern.compile("Ich habe den Notruf von (.+?)(?:\\s+mit folgendem Grund)?\\s+zur\u00fcckgewiesen");
-            Matcher m = rejectCallerPattern.matcher(msg);
+            Matcher m = REJECT_CALLER.matcher(msg);
             if (m.find()) {
                 String caller = m.group(1).trim();
-                String funkSender = extractFunkSender(msg);
-                String medic = funkSender != null ? funkSender : "Unbekannt";
+                String medic = extractFunkSenderOrDefault(msg);
                 manager.rejectCall(caller, medic);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call REJECTED by {} for caller {}", medic, caller);
+                GMMedic.LOGGER.info("[GM-Medic] Call rejected: {} by {}", caller, medic);
             } else {
-                // Fallback with old pattern
-                Matcher mOld = REJECTED_PATTERN.matcher(msg);
-                if (mOld.find()) {
-                    String caller = mOld.group(1).trim();
-                    String funkSender = extractFunkSender(msg);
-                    String medic = funkSender != null ? funkSender : "Unbekannt";
-                    manager.rejectCall(caller, medic);
-                    GMMedic.LOGGER.info("[GM-Medic] >>> Call REJECTED (fallback) by {} for caller {}", medic, caller);
-                } else {
-                    GMMedic.LOGGER.warn("[GM-Medic] Could not extract caller from rejected message: {}", msg);
-                }
+                GMMedic.LOGGER.warn("[GM-Medic] Could not parse rejection: {}", msg);
             }
             return;
         }
 
-        // ---- Accept message (another medic takes a call) ----
+        // Accepted
         if (isFunk && msg.contains("Ich nehme den Notruf von") && msg.contains("entgegen")) {
-            GMMedic.LOGGER.info("[GM-Medic] Trying to match ACCEPT_PATTERN on: {}", msg);
-            Matcher m = ACCEPT_PATTERN.matcher(msg);
-            if (m.find()) {
-                String medic = m.group(1).trim();
-                String caller = m.group(2).trim();
-                manager.assignMedic(caller, medic);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Call ACCEPTED by {} for {}", medic, caller);
-            } else {
-                // Fallback: try a simpler extraction
-                GMMedic.LOGGER.warn("[GM-Medic] ACCEPT_PATTERN did not match, trying fallback extraction for: {}", msg);
-                Pattern fallbackAccept = Pattern.compile("(?:^|\\]\\s*|\\)\\s*)([A-Za-z0-9_]{1,16})\\s*.\\s*Ich nehme den Notruf von (.+?)\\s*entgegen!");
-                Matcher mf = fallbackAccept.matcher(msg);
-                if (mf.find()) {
-                    String medic = mf.group(1).trim();
-                    String caller = mf.group(2).trim();
+            if (!tryAccept(ACCEPT, msg) && !tryAccept(ACCEPT_FALLBACK, msg)) {
+                Matcher mu = ACCEPT_ULTRA_FALLBACK.matcher(msg);
+                if (mu.find()) {
+                    String caller = mu.group(1).trim();
+                    String medic = extractFunkSenderOrDefault(msg);
                     manager.assignMedic(caller, medic);
-                    GMMedic.LOGGER.info("[GM-Medic] >>> Call ACCEPTED (fallback) by {} for {}", medic, caller);
+                    GMMedic.LOGGER.info("[GM-Medic] Call accepted: {} by {}", caller, medic);
                 } else {
-                    // Ultra-fallback: just extract caller name
-                    Pattern ultraFallback = Pattern.compile("Ich nehme den Notruf von (.+?)\\s*entgegen!");
-                    Matcher mu = ultraFallback.matcher(msg);
-                    if (mu.find()) {
-                        String caller = mu.group(1).trim();
-                        String funkSender = extractFunkSender(msg);
-                        String medic = funkSender != null ? funkSender : "Unbekannt";
-                        manager.assignMedic(caller, medic);
-                        GMMedic.LOGGER.info("[GM-Medic] >>> Call ACCEPTED (ultra-fallback) by {} for {}", medic, caller);
-                    } else {
-                        GMMedic.LOGGER.error("[GM-Medic] Could not parse accept message at all: {}", msg);
-                    }
+                    GMMedic.LOGGER.warn("[GM-Medic] Could not parse accept: {}", msg);
                 }
             }
             return;
         }
 
-        // ---- DATENÜBERMITTLUNG header ----
+        // Transmission header
         if (msg.contains("DATEN") && msg.contains("BERMITTLUNG VON ZENTRALE")) {
             manager.startParsing();
-            GMMedic.LOGGER.info("[GM-Medic] >>> TRANSMISSION STARTED (pending call created)");
+            GMMedic.LOGGER.info("[GM-Medic] Transmission started");
             return;
         }
 
-        // ---- Parsing individual lines of a transmission block ----
-        if (manager.getState() != ParsingState.PARSING) {
-            return;
-        }
+        // Parse transmission lines
+        if (manager.getState() != ParsingState.PARSING) return;
+        parseTransmissionLine(msg);
+    }
 
-        GMMedic.LOGGER.info("[GM-Medic] [PARSING] line: {}", msg);
+    // --- Transmission line parsing ---
 
+    private static void parseTransmissionLine(String msg) {
         if (msg.contains("Betroffener:")) {
-            String caller = msg.replaceAll(".*Betroffener:\\s*", "").trim();
-            manager.setCaller(caller, true);
-            GMMedic.LOGGER.info("[GM-Medic] >>> DEATH victim: {}", caller);
+            manager.setCaller(extractValue(msg, "Betroffener:"), true);
             return;
         }
-
         if (msg.contains("Notruf von:")) {
-            String caller = msg.replaceAll(".*Notruf von:\\s*", "").trim();
-            manager.setCaller(caller, false);
-            GMMedic.LOGGER.info("[GM-Medic] >>> ECALL caller: {}", caller);
+            manager.setCaller(extractValue(msg, "Notruf von:"), false);
             return;
         }
-
         if (msg.contains("Von:")) {
-            String caller = msg.replaceAll(".*Von:\\s*", "").trim();
-            manager.setCaller(caller, false);
-            GMMedic.LOGGER.info("[GM-Medic] >>> ECALL caller (Von): {}", caller);
+            manager.setCaller(extractValue(msg, "Von:"), false);
             return;
         }
-
         if (msg.contains("Verbleibende Zeit:")) {
-            Matcher m = REMAINING_TIME_PATTERN.matcher(msg);
+            Matcher m = REMAINING_TIME.matcher(msg);
             if (m.find()) {
                 int minutes = m.group(1) != null ? Integer.parseInt(m.group(1)) : 0;
                 int seconds = Integer.parseInt(m.group(2));
-                int totalSeconds = minutes * 60 + seconds;
-                manager.setRemainingTime(totalSeconds);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Remaining time: {}m {}s = {}s total", minutes, seconds, totalSeconds);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not parse remaining time from: {}", msg);
+                manager.setRemainingTime(minutes * 60 + seconds);
             }
             return;
         }
-
         if (msg.contains("Todesursache:")) {
-            String reason = msg.replaceAll(".*Todesursache:\\s*", "").trim();
-            manager.setReason(reason);
-            GMMedic.LOGGER.info("[GM-Medic] >>> Death reason: {}", reason);
+            manager.setReason(extractValue(msg, "Todesursache:"));
             return;
         }
-
         if (msg.contains("Grund:")) {
-            String reason = msg.replaceAll(".*Grund:\\s*", "").trim();
-            manager.setReason(reason);
-            GMMedic.LOGGER.info("[GM-Medic] >>> Call reason: {}", reason);
+            manager.setReason(extractValue(msg, "Grund:"));
             return;
         }
-
         if (msg.contains("Ortung:") || msg.contains("Ort:")) {
-            Matcher m = LOCATION_PATTERN.matcher(msg);
+            Matcher m = LOCATION.matcher(msg);
             if (m.find()) {
                 double x = Double.parseDouble(m.group(1));
                 double y = Double.parseDouble(m.group(2));
-                String zStr = m.group(3).replace(")", "");
-                double z = Double.parseDouble(zStr);
+                double z = Double.parseDouble(m.group(3).replace(")", ""));
                 String locName = m.group(4) != null ? m.group(4).trim() : "";
                 manager.setLocation(x, y, z, locName);
-                GMMedic.LOGGER.info("[GM-Medic] >>> Location: X={}, Y={}, Z={} ({})", x, y, z, locName);
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Could not parse location from: {}", msg);
             }
             return;
         }
-
         if (msg.contains("HQ: Kannst du") || msg.contains("ANNEHMEN")) {
             var call = manager.finalizeCall();
             if (call != null) {
-                GMMedic.LOGGER.info("[GM-Medic] >>> CALL FINALIZED: {} - {} (type={})", call.getCallerName(), call.getReason(), call.getType());
-            } else {
-                GMMedic.LOGGER.warn("[GM-Medic] Tried to finalize call but no pending call found");
+                GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
             }
-            return;
         }
+    }
+
+    // --- Helpers ---
+
+    /** Returns true if the message uses a FUNK prefix ([FUNK] or circled Unicode letter). */
+    private static boolean isFunkMessage(String msg) {
+        if (msg.contains("[FUNK]")) return true;
+        for (int i = 0; i < msg.length(); i++) {
+            char c = msg.charAt(i);
+            if ((c >= '\u24B6' && c <= '\u24CF') || (c >= '\u24D0' && c <= '\u24E9')) return true;
+        }
+        return false;
+    }
+
+    /** Extracts the FUNK sender player name, or null if not found. */
+    private static String extractFunkSender(String msg) {
+        for (Pattern p : new Pattern[]{FUNK_SENDER_SIM, FUNK_SENDER_REAL, FUNK_SENDER_ANY}) {
+            Matcher m = p.matcher(msg);
+            if (m.find()) return m.group(1).trim();
+        }
+        return null;
+    }
+
+    /** Extracts the FUNK sender, defaulting to "Unbekannt". */
+    private static String extractFunkSenderOrDefault(String msg) {
+        String sender = extractFunkSender(msg);
+        return sender != null ? sender : "Unbekannt";
+    }
+
+    /** Checks if a FUNK message was sent by the local player. */
+    private static boolean isOwnMessage(String playerName, String funkSender, String msg) {
+        if (playerName == null) return true; // Can't verify — assume own
+        if (funkSender != null) return funkSender.equalsIgnoreCase(playerName);
+        return msg.contains(playerName);
+    }
+
+    /** Extracts a caller from msg using the given pattern and removes the call. */
+    private static void extractAndRemove(Pattern pattern, String msg, String reason) {
+        Matcher m = pattern.matcher(msg);
+        if (m.find()) {
+            String caller = m.group(1).trim();
+            manager.removeCallByCallerName(caller);
+            GMMedic.LOGGER.info("[GM-Medic] Call removed ({}): {}", reason, caller);
+        } else {
+            GMMedic.LOGGER.warn("[GM-Medic] Could not parse caller for {}: {}", reason, msg);
+        }
+    }
+
+    /** Tries to match an accept pattern and assign the medic. Returns true on success. */
+    private static boolean tryAccept(Pattern pattern, String msg) {
+        Matcher m = pattern.matcher(msg);
+        if (m.find()) {
+            String medic = m.group(1).trim();
+            String caller = m.group(2).trim();
+            manager.assignMedic(caller, medic);
+            GMMedic.LOGGER.info("[GM-Medic] Call accepted: {} by {}", caller, medic);
+            return true;
+        }
+        return false;
+    }
+
+    /** Extracts the value after "Key:" from a transmission line. */
+    private static String extractValue(String msg, String key) {
+        return msg.replaceAll(".*" + Pattern.quote(key) + "\\s*", "").trim();
     }
 
     private static String getPlayerName() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null) return null;
-        if (client.player != null) {
-            return client.player.getNameForScoreboard();
-        }
-        if (client.getSession() != null && client.getSession().getUsername() != null) {
-            return client.getSession().getUsername();
-        }
+        if (client.player != null) return client.player.getNameForScoreboard();
+        if (client.getSession() != null) return client.getSession().getUsername();
         return null;
     }
 }
