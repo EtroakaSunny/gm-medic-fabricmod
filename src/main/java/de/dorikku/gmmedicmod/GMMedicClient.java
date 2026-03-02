@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod;
 
 import de.dorikku.gmmedicmod.command.DebugCommands;
+import de.dorikku.gmmedicmod.command.HudCommands;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
@@ -46,6 +47,9 @@ public class GMMedicClient implements ClientModInitializer {
 
         // /gmstatus command (always available)
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerStatusCommand);
+
+        // /gmhud command (compact mode, status)
+        ClientCommandRegistrationCallback.EVENT.register(HudCommands::register);
 
         GMMedic.LOGGER.info("[GM-Medic] Client initialized");
     }
