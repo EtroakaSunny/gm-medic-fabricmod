@@ -29,6 +29,11 @@ public class EmergencyCall {
     private long rejectedAtMs = -1;
     private String rejectedBy;
 
+    // Resolved state: call is done (revived, withdrawn, reached, etc.) — gray out before removing
+    private boolean resolved = false;
+    private long resolvedAtMs = -1;
+    private String resolvedReason;
+
     /** Creates a fully resolved call (all data known). */
     public EmergencyCall(String callerName, String reason, double x, double y, double z, String locationName, CallType type) {
         this.callerName = callerName;
@@ -43,9 +48,9 @@ public class EmergencyCall {
         this.assignedMedic = null;
     }
 
-    /** Creates a placeholder call shown immediately when the header line arrives. */
-    public static EmergencyCall pending() {
-        EmergencyCall c = new EmergencyCall("...", "...", 0, 0, 0, "", CallType.ECALL);
+    /** Creates a placeholder call shown immediately when the pre-message arrives. */
+    public static EmergencyCall pending(CallType type) {
+        EmergencyCall c = new EmergencyCall("...", "...", 0, 0, 0, "", type);
         c.pending = true;
         return c;
     }
@@ -171,5 +176,24 @@ public class EmergencyCall {
     public String getRejectedBy() {
         return rejectedBy;
     }
-}
 
+    // --- Resolved state (gray-out before removal) ---
+
+    public boolean isResolved() {
+        return resolved;
+    }
+
+    public void setResolved(String reason) {
+        this.resolved = true;
+        this.resolvedAtMs = System.currentTimeMillis();
+        this.resolvedReason = reason;
+    }
+
+    public long getResolvedAtMs() {
+        return resolvedAtMs;
+    }
+
+    public String getResolvedReason() {
+        return resolvedReason;
+    }
+}

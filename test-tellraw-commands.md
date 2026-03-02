@@ -29,29 +29,12 @@ Replace `PLAYERNAME` with your actual in-game name:
 
 ---
 
-## 3. Duty On (FUNK join — Real Ⓛ format)
-
-Replace `PLAYERNAME` with your actual in-game name:
-```
-/tellraw @a {"text":"Ⓛ [Notarzt] PLAYERNAME » Ich bin wieder auf dem Server! *Roger*"}
-```
-
----
-
-## 4. Duty On (TestDuty debug trigger)
-
-```
-/tellraw @a {"text":"TestDuty"}
-```
-
----
-
-## 5. Death Call — Full DATENÜBERMITTLUNG
+## 3. Death Call — Full DATENÜBERMITTLUNG
 
 Run these in quick succession (all lines of the transmission block):
 
 ```
-/tellraw @a {"text":"[FUNK] ZENTRALE » Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten rüber!"}
+/tellraw @a {"text":"[FUNK] ZENTRALE » Wir haben eine neue Todesmeldung erhalten - ich schicke euch die Daten rüber!"}
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
 /tellraw @a {"text":" - Betroffener: Toxic_padz"}
 /tellraw @a {"text":" - Verbleibende Zeit: 4 Minuten, 58 Sekunden"}
@@ -65,7 +48,7 @@ Run these in quick succession (all lines of the transmission block):
 
 ---
 
-## 6. Normal Notruf — Full DATENÜBERMITTLUNG
+## 4. Normal Notruf — Full DATENÜBERMITTLUNG
 
 ```
 /tellraw @a {"text":"[FUNK] ZENTRALE » Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten rüber!"}
@@ -82,7 +65,7 @@ Run these in quick succession (all lines of the transmission block):
 
 ---
 
-## 7. Notruf with "Von:" header (alternative caller format)
+## 5. Notruf with "Von:" header (alternative caller format)
 
 ```
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
@@ -94,25 +77,25 @@ Run these in quick succession (all lines of the transmission block):
 
 ---
 
-## 8. Accept a Call ([FUNK] format)
+## 6. Accept an E-Call ([FUNK] format)
 
 Accepts the call from **F3lixus** by medic **mmlp12345**:
 ```
-/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich nehme den Notruf von F3lixus entgegen!"}
+/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich bin nun auf dem Weg zu dem Notruf von F3lixus."}
 ```
 
 ---
 
-## 9. Accept a Call (Real Ⓛ format)
+## 7. Accept a Death Call ([FUNK] format)
 
-Accepts the call from **Toxic_padz** by medic **DrHouse**:
+Accepts the death call from **Toxic_padz** by medic **DrHouse**:
 ```
-/tellraw @a {"text":"Ⓛ [Facharzt] DrHouse » Ich nehme den Notruf von Toxic_padz entgegen!"}
+/tellraw @a {"text":"[FUNK] (Facharzt) DrHouse » Ich bin nun auf dem Weg zu der Todesmeldung von Toxic_padz."}
 ```
 
 ---
 
-## 10. Reject a Call
+## 8. Reject a Call
 
 Rejects the call from **SteveHeal** by medic **NurseJoy**:
 ```
@@ -121,7 +104,7 @@ Rejects the call from **SteveHeal** by medic **NurseJoy**:
 
 ---
 
-## 11. Withdraw a Call (caller withdraws their own Notruf)
+## 9. Withdraw a Call (caller withdraws their own Notruf)
 
 ```
 /tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler F3lixus hat seinen Notruf zurückgezogen."}
@@ -129,7 +112,7 @@ Rejects the call from **SteveHeal** by medic **NurseJoy**:
 
 ---
 
-## 12. Revive a Player
+## 10. Revive a Player
 
 ```
 /tellraw @a {"text":"[FUNK] (Sanitäter) DrHouse » Ich habe Toxic_padz wiederbelebt!"}
@@ -137,7 +120,7 @@ Rejects the call from **SteveHeal** by medic **NurseJoy**:
 
 ---
 
-## 13. Caller Logged Out
+## 11. Caller Logged Out
 
 ```
 /tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler SteveHeal hat sich ausgeloggt."}
@@ -145,18 +128,42 @@ Rejects the call from **SteveHeal** by medic **NurseJoy**:
 
 ---
 
-## 14. Reached the Caller
+## 12. Reached the Caller
 
 ```
-/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich habe den Notruf in der Innenstadt (F3lixus) erreicht!"}
+/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich habe den Notruf von F3lixus erreicht!"}
 ```
 
 ---
 
-## 15. Duty Off (direct)
+## 13. Death Disconnect (player logs out while unconscious)
 
 ```
-/tellraw @a {"text":"Du hast den Dienst verlassen."}
+/tellraw @a {"text":"[FUNK] ZENTRALE » Der bewusstlose Spieler Toxic_padz hat sich ausgeloggt. Wir werden ihm 20% mehr berechnen, sobald er versorgt wurde."}
+```
+
+---
+
+## 14. Cancel Medic on Route (death becomes available again)
+
+```
+/tellraw @a {"text":"[FUNK] (Assistent) DrHouse » Ich kann die Todesmeldung von Toxic_padz nicht mehr erledigen. Bitte übernehmen!"}
+```
+
+---
+
+## 15. User Revokes E-Call
+
+```
+/tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler F3lixus hat seinen Notruf zurückgezogen."}
+```
+
+---
+
+## 16. Duty Off (direct)
+
+```
+/tellraw @a {"text":"§e┃ §620:59:00 §8» §r» ✔ Du hast den Dienst verlassen."}
 ```
 
 Alternative:
@@ -166,7 +173,7 @@ Alternative:
 
 ---
 
-## 16. Duty Off (FUNK leave — [FUNK] format)
+## 17. Duty Off (FUNK leave — [FUNK] format)
 
 Replace `PLAYERNAME` with your actual in-game name:
 ```
@@ -175,14 +182,6 @@ Replace `PLAYERNAME` with your actual in-game name:
 
 ---
 
-## 17. Duty Off (FUNK leave — Real Ⓛ format)
-
-Replace `PLAYERNAME` with your actual in-game name:
-```
-/tellraw @a {"text":"Ⓛ [Notarzt] PLAYERNAME » Ich bin nun offline. Bis bald!"}
-```
-
----
 
 ## 18. HUD Compact Mode Toggle
 
@@ -197,7 +196,7 @@ These are client commands (not tellraw), type them in chat:
 ## 19. Death Call with Short Timer (test flashing)
 
 ```
-/tellraw @a {"text":"TestDuty"}
+/tellraw @a {"text":"§e┃ §620:58:12 §8» §r» ✔ Du bist nun im Dienst."}
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
 /tellraw @a {"text":" - Betroffener: DyingPlayer"}
 /tellraw @a {"text":" - Verbleibende Zeit: 25 Sekunden"}
@@ -226,7 +225,7 @@ These are client commands (not tellraw), type them in chat:
 Run all of these in quick sequence to fill the HUD:
 
 ```
-/tellraw @a {"text":"TestDuty"}
+/tellraw @a {"text":"§e┃ §620:58:12 §8» §r» ✔ Du bist nun im Dienst."}
 
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
 /tellraw @a {"text":" - Notruf von: Call_Player_1"}
@@ -257,7 +256,7 @@ Run all of these in quick sequence to fill the HUD:
 
 Then test accept/reject/remove on them:
 ```
-/tellraw @a {"text":"[FUNK] (Facharzt) MedicA » Ich nehme den Notruf von Call_Player_1 entgegen!"}
+/tellraw @a {"text":"[FUNK] (Facharzt) MedicA » Ich bin nun auf dem Weg zu dem Notruf von Call_Player_1."}
 /tellraw @a {"text":"[FUNK] (Sanitäter) MedicB » Ich habe den Notruf von Call_Player_3 zurückgewiesen"}
 /tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler Call_Player_4 hat seinen Notruf zurückgezogen."}
 ```
@@ -307,7 +306,7 @@ Tests the full `§e┃ §6TIMESTAMP §8» §r` prefix format:
 Run all of these in order for a complete feature test:
 
 ```
-/tellraw @a {"text":"TestDuty"}
+/tellraw @a {"text":"§e┃ §620:58:12 §8» §r» ✔ Du bist nun im Dienst."}
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
 /tellraw @a {"text":" - Betroffener: Toxic_padz"}
 /tellraw @a {"text":" - Verbleibende Zeit: 4 Minuten, 58 Sekunden"}
@@ -319,8 +318,8 @@ Run all of these in order for a complete feature test:
 /tellraw @a {"text":" - Grund: ich brauche heal"}
 /tellraw @a {"text":"§e - Ortung: §f§fX: -1332 Y: 82 Z: -550 (Südlicher Gebirgszug)"}
 /tellraw @a {"text":"  §aANNEHMEN      §eANRUFEN      §cMELDEN      §4ZURÜCKWEISEN"}
-/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich nehme den Notruf von F3lixus entgegen!"}
-/tellraw @a {"text":"Ⓛ [Facharzt] DrHouse » Ich nehme den Notruf von Toxic_padz entgegen!"}
+/tellraw @a {"text":"[FUNK] (Facharzt) mmlp12345 » Ich bin nun auf dem Weg zu dem Notruf von F3lixus."}
+/tellraw @a {"text":"[FUNK] (Facharzt) DrHouse » Ich bin nun auf dem Weg zu der Todesmeldung von Toxic_padz."}
 /tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
 /tellraw @a {"text":" - Notruf von: RejectMe"}
 /tellraw @a {"text":" - Grund: Testing rejection"}

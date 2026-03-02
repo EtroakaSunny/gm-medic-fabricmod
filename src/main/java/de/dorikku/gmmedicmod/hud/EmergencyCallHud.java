@@ -35,6 +35,8 @@ public class EmergencyCallHud {
     private static final int REJECTED_COLOR  = 0xFFFF5555; // Red
     private static final int INFO_COLOR      = 0xFFAAAAAA; // Gray
     private static final int DIMMED_COLOR    = 0xFF666666; // Dimmed gray (rejected)
+    private static final int RESOLVED_COLOR  = 0xFF555555; // Dark gray (resolved / done)
+    private static final int RESOLVED_LABEL  = 0xFF888888; // Lighter gray for the resolved reason text
     private static final int MEDIC_COLOR     = 0xFF55FFFF; // Cyan
     private static final int NO_CALLS_COLOR  = 0xFF888888; // Dark gray
     private static final int PENDING_COLOR   = 0xFFFFFF55; // Yellow
@@ -67,10 +69,11 @@ public class EmergencyCallHud {
         // Auto-remove expired entries
         long now = System.currentTimeMillis();
         calls.stream()
-                .filter(c -> c.hasTimer() && c.getDeadlineMs() > 0 && now > c.getDeadlineMs() + 10_000L)
+                .filter(c -> c.hasTimer() && !c.isResolved() && c.getDeadlineMs() > 0 && now > c.getDeadlineMs() + 10_000L)
                 .toList()
                 .forEach(c -> mgr.removeCallByCallerName(c.getCallerName()));
         mgr.removeExpiredRejectedCalls(10_000L);
+        mgr.removeExpiredResolvedCalls(5_000L);
 
         int screenWidth = client.getWindow().getScaledWidth();
         int panelX = screenWidth - panelWidth - margin;
@@ -136,11 +139,15 @@ public class EmergencyCallHud {
         int indent = compact ? 0 : 4; // no inner indent in compact mode
         boolean isDeath = call.getType() == EmergencyCall.CallType.DEATH;
         boolean isRejected = call.isRejected();
+        boolean isResolved = call.isResolved();
 
         // Type label & color
         String typeLabel = isDeath ? "\u2620 Tod" : "\ud83d\udd14 Notruf";
         int typeColor = isDeath ? DEATH_COLOR : ECALL_COLOR;
-        if (isRejected) {
+        if (isResolved) {
+            typeLabel = compact ? "\u2714" : "\u2714 " + typeLabel;
+            typeColor = RESOLVED_COLOR;
+        } else if (isRejected) {
             typeLabel = compact ? "\u2718" : "\u2718 " + typeLabel;
             typeColor = REJECTED_COLOR;
         } else if (call.isAccepted()) {
@@ -148,10 +155,10 @@ public class EmergencyCallHud {
             typeColor = ACCEPTED_COLOR;
         }
 
-        // Timer (death calls only)
+        // Timer (death calls only — hidden when resolved)
         String timerStr = null;
         int timerColor = TIMER_OK;
-        if (isDeath && call.hasTimer()) {
+        if (isDeath && call.hasTimer() && !isResolved) {
             int remaining = call.getRemainingSeconds();
             timerStr = remaining > 0 ? String.format(" %d:%02d", remaining / 60, remaining % 60) : " \u2717";
             timerColor = remaining <= 0 ? TIMER_CRIT
@@ -216,7 +223,7 @@ public class EmergencyCallHud {
             return y + lineHeight;
         }
 
-        int infoColor = isRejected ? DIMMED_COLOR : INFO_COLOR;
+        int infoColor = isResolved ? RESOLVED_COLOR : isRejected ? DIMMED_COLOR : INFO_COLOR;
         int maxWidth = panelWidth - padding * 2 - indent;
 
         if (compact) {
@@ -239,8 +246,14 @@ public class EmergencyCallHud {
             }
             ctx.drawText(text, locLine, x + indent, y, infoColor, true);
 
-            // Medic / rejected on same line, right-aligned (ensure no overlap with coords)
-            if (isRejected) {
+            // Medic / rejected / resolved on same line, right-aligned (ensure no overlap with coords)
+            if (isResolved) {
+                String rl = call.getResolvedReason() != null ? call.getResolvedReason() : "\u2714";
+                int rlX = x + panelWidth - padding * 2 - text.getWidth(rl);
+                if (rlX > x + indent + text.getWidth(locLine) + 2) {
+                    ctx.drawText(text, rl, rlX, y, RESOLVED_LABEL, true);
+                }
+            } else if (isRejected) {
                 String rj = "\u2718";
                 int rjX = x + panelWidth - padding * 2 - text.getWidth(rj);
                 if (rjX > x + indent + text.getWidth(locLine) + 2) {
@@ -283,8 +296,15 @@ public class EmergencyCallHud {
             ctx.drawText(text, locLine, x + indent, y, infoColor, true);
             y += lineHeight;
 
+            // Resolved label
+            if (isResolved) {
+                String line = "\u2714 " + (call.getResolvedReason() != null ? call.getResolvedReason() : "Erledigt");
+                ctx.drawText(text, line, x + indent, y, RESOLVED_LABEL, true);
+                y += lineHeight;
+            }
+
             // Rejected label
-            if (isRejected) {
+            if (!isResolved && isRejected) {
                 String line = "\u2718 Zur\u00fcckgewiesen";
                 if (call.getRejectedBy() != null && !call.getRejectedBy().isEmpty()) {
                     line += " von " + call.getRejectedBy();
@@ -294,7 +314,7 @@ public class EmergencyCallHud {
             }
 
             // Assigned medic
-            if (!isRejected && call.isAccepted()) {
+            if (!isResolved && !isRejected && call.isAccepted()) {
                 ctx.drawText(text, "Medic: " + call.getAssignedMedic(), x + indent, y, MEDIC_COLOR, true);
                 y += lineHeight;
             }
@@ -310,7 +330,8 @@ public class EmergencyCallHud {
             return 3 * lineHeight;
         }
         int lines = 4; // type + caller + reason + location
-        if (call.isRejected() || call.isAccepted()) lines++;
+        if (call.isResolved()) lines++;          // resolved reason label
+        else if (call.isRejected() || call.isAccepted()) lines++; // rejected or medic label
         return lines * lineHeight;
     }
 }

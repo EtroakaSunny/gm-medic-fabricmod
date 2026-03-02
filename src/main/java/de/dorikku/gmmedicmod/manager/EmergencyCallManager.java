@@ -34,6 +34,7 @@ public class EmergencyCallManager {
 
     private ParsingState state = ParsingState.IDLE;
     private long stateTimestamp = 0;
+    private long lastFinalizedMs = 0;  // Cooldown: prevents header fallback right after finalization
 
     private EmergencyCallManager() {}
 
@@ -65,10 +66,49 @@ public class EmergencyCallManager {
         activeCalls.removeIf(call -> call.getCallerName().equalsIgnoreCase(callerName));
     }
 
+    /**
+     * Marks a call as resolved (done) — it will be grayed out in the HUD for a few seconds
+     * before being auto-removed. The timer is frozen/hidden once resolved.
+     *
+     * @param callerName the caller to resolve
+     * @param reason     display label, e.g. "Wiederbelebt", "Zurückgezogen", "Erreicht"
+     */
+    public void resolveCall(String callerName, String reason) {
+        for (EmergencyCall call : activeCalls) {
+            if (call.getCallerName().equalsIgnoreCase(callerName)) {
+                call.setResolved(reason);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Removes calls that have been in resolved state for longer than the given duration.
+     */
+    public void removeExpiredResolvedCalls(long maxAgeMs) {
+        long now = System.currentTimeMillis();
+        activeCalls.removeIf(call -> call.isResolved()
+                && call.getResolvedAtMs() > 0
+                && now - call.getResolvedAtMs() > maxAgeMs);
+    }
+
     public void assignMedic(String callerName, String medicName) {
         for (EmergencyCall call : activeCalls) {
             if (call.getCallerName().equalsIgnoreCase(callerName)) {
                 call.setAssignedMedic(medicName);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Clears the assigned medic from a call, making it available to be taken again.
+     * Used when a medic cancels while on route.
+     */
+    public void unassignMedic(String callerName) {
+        for (EmergencyCall call : activeCalls) {
+            if (call.getCallerName().equalsIgnoreCase(callerName)) {
+                call.setAssignedMedic(null);
                 break;
             }
         }
@@ -108,15 +148,17 @@ public class EmergencyCallManager {
     }
 
     /**
-     * Called when the DATENÜBERMITTLUNG header line arrives.
+     * Called when the pre-message or DATENÜBERMITTLUNG header line arrives.
      * Immediately inserts a pending placeholder call so the HUD shows it right away.
+     *
+     * @param isDeath true if the pre-message indicates a death call ("Todesmeldung")
      */
-    public void startParsing() {
+    public void startParsing(boolean isDeath) {
         // If there's already a dangling pending call, finalize it first
         if (pendingCall != null) {
             pendingCall.setPending(false);
         }
-        pendingCall = EmergencyCall.pending();
+        pendingCall = EmergencyCall.pending(isDeath ? CallType.DEATH : CallType.ECALL);
         activeCalls.add(pendingCall);
         state = ParsingState.PARSING;
         stateTimestamp = System.currentTimeMillis();
@@ -156,10 +198,20 @@ public class EmergencyCallManager {
             EmergencyCall call = pendingCall;
             pendingCall = null;
             state = ParsingState.IDLE;
+            lastFinalizedMs = System.currentTimeMillis();
             return call;
         }
         resetState();
         return null;
+    }
+
+    /**
+     * Returns true if a call was finalized very recently (within the given ms).
+     * Used to prevent the DATENÜBERMITTLUNG header fallback from creating a duplicate
+     * when it arrives in the same message batch as the ANNEHMEN that just finalized.
+     */
+    public boolean wasRecentlyFinalized(long withinMs) {
+        return lastFinalizedMs > 0 && System.currentTimeMillis() - lastFinalizedMs < withinMs;
     }
 
     public void resetState() {

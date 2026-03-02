@@ -26,7 +26,6 @@ public class GMMedicClient implements ClientModInitializer {
 
         // Message listeners
         ClientReceiveMessageEvents.GAME.register(ChatMessageHandler::onGameMessage);
-        ClientReceiveMessageEvents.CHAT.register(ChatMessageHandler::onChatMessage);
 
         // HUD
         HudElementRegistry.addLast(
