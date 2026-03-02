@@ -132,6 +132,10 @@ public class EmergencyCall {
         return deadlineMs;
     }
 
+    public void setDeadlineMs(long deadlineMs) {
+        this.deadlineMs = deadlineMs;
+    }
+
     public String getAssignedMedic() {
         return assignedMedic;
     }

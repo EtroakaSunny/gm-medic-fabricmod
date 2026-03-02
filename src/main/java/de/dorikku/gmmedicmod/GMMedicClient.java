@@ -1,7 +1,10 @@
 package de.dorikku.gmmedicmod;
 
+import de.dorikku.gmmedicmod.api.ApiClient;
+import de.dorikku.gmmedicmod.command.ApiCommands;
 import de.dorikku.gmmedicmod.command.DebugCommands;
 import de.dorikku.gmmedicmod.command.HudCommands;
+import de.dorikku.gmmedicmod.config.ApiConfig;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
@@ -36,9 +39,13 @@ public class GMMedicClient implements ClientModInitializer {
 
         // Connection events
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            ApiClient.getInstance().disconnect();
             EmergencyCallManager.getInstance().setInDuty(false);
-            GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset");
+            GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API disconnected");
         });
+
+        // Initialize API config (loads from disk)
+        ApiConfig.getInstance();
 
         // Debug commands (dev only)
         if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
@@ -50,6 +57,9 @@ public class GMMedicClient implements ClientModInitializer {
 
         // /gmhud command (compact mode, status)
         ClientCommandRegistrationCallback.EVENT.register(HudCommands::register);
+
+        // /gmapi command (API sync management — always available)
+        ClientCommandRegistrationCallback.EVENT.register(ApiCommands::register);
 
         GMMedic.LOGGER.info("[GM-Medic] Client initialized");
     }

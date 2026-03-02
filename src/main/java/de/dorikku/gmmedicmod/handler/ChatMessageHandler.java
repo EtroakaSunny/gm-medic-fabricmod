@@ -1,6 +1,8 @@
 package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.api.ApiClient;
+import de.dorikku.gmmedicmod.config.ApiConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import net.minecraft.client.MinecraftClient;
@@ -115,6 +117,7 @@ public class ChatMessageHandler {
         // Duty on
         if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
             manager.setInDuty(true);
+            connectApiIfReady();
             GMMedic.LOGGER.info("[GM-Medic] On duty (direct)");
             return;
         }
@@ -122,6 +125,7 @@ public class ChatMessageHandler {
         // Debug trigger — type "TestDuty" in any chat to force duty on
         if (msg.contains("TestDuty")) {
             manager.setInDuty(true);
+            connectApiIfReady();
             GMMedic.LOGGER.info("[GM-Medic] On duty (TestDuty)");
             return;
         }
@@ -129,6 +133,7 @@ public class ChatMessageHandler {
         // Duty off
         if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) {
             manager.setInDuty(false);
+            ApiClient.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Off duty (direct)");
             return;
         }
@@ -142,11 +147,13 @@ public class ChatMessageHandler {
             if (isOwn) {
                 if (msg.contains("Ich bin wieder auf dem Server")) {
                     manager.setInDuty(true);
+                    connectApiIfReady();
                     GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK join)");
                     return;
                 }
                 if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) {
                     manager.setInDuty(false);
+                    ApiClient.getInstance().disconnect();
                     GMMedic.LOGGER.info("[GM-Medic] Off duty (FUNK leave)");
                     return;
                 }
@@ -187,6 +194,7 @@ public class ChatMessageHandler {
                 String caller = m.group(1).trim();
                 String medic = extractFunkSenderOrDefault(msg);
                 manager.rejectCall(caller, medic);
+                ApiClient.getInstance().sendCallRejected(caller, medic);
                 GMMedic.LOGGER.info("[GM-Medic] Call rejected: {} by {}", caller, medic);
             } else {
                 GMMedic.LOGGER.warn("[GM-Medic] Could not parse rejection: {}", msg);
@@ -202,6 +210,7 @@ public class ChatMessageHandler {
                     String caller = mu.group(1).trim();
                     String medic = extractFunkSenderOrDefault(msg);
                     manager.assignMedic(caller, medic);
+                    ApiClient.getInstance().sendCallAccepted(caller, medic);
                     GMMedic.LOGGER.info("[GM-Medic] Call accepted: {} by {}", caller, medic);
                 } else {
                     GMMedic.LOGGER.warn("[GM-Medic] Could not parse accept: {}", msg);
@@ -268,6 +277,7 @@ public class ChatMessageHandler {
         if (msg.contains("HQ: Kannst du") || msg.contains("ANNEHMEN")) {
             var call = manager.finalizeCall();
             if (call != null) {
+                ApiClient.getInstance().sendNewCall(call);
                 GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
             }
         }
@@ -307,12 +317,13 @@ public class ChatMessageHandler {
         return msg.contains(playerName);
     }
 
-    /** Extracts a caller from msg using the given pattern and removes the call. */
+    /** Extracts a caller from msg using the given pattern and removes the call. Also notifies the API. */
     private static void extractAndRemove(Pattern pattern, String msg, String reason) {
         Matcher m = pattern.matcher(msg);
         if (m.find()) {
             String caller = m.group(1).trim();
             manager.removeCallByCallerName(caller);
+            ApiClient.getInstance().sendCallRemoved(caller, reason);
             GMMedic.LOGGER.info("[GM-Medic] Call removed ({}): {}", reason, caller);
         } else {
             GMMedic.LOGGER.warn("[GM-Medic] Could not parse caller for {}: {}", reason, msg);
@@ -326,6 +337,7 @@ public class ChatMessageHandler {
             String medic = m.group(1).trim();
             String caller = m.group(2).trim();
             manager.assignMedic(caller, medic);
+            ApiClient.getInstance().sendCallAccepted(caller, medic);
             GMMedic.LOGGER.info("[GM-Medic] Call accepted: {} by {}", caller, medic);
             return true;
         }
@@ -343,5 +355,13 @@ public class ChatMessageHandler {
         if (client.player != null) return client.player.getNameForScoreboard();
         if (client.getSession() != null) return client.getSession().getUsername();
         return null;
+    }
+
+    /** Connects to the API if it is configured and ready. */
+    private static void connectApiIfReady() {
+        if (ApiConfig.getInstance().isReady()) {
+            String name = getPlayerName();
+            ApiClient.getInstance().connect(name != null ? name : "Unknown");
+        }
     }
 }

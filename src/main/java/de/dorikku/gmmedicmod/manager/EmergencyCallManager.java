@@ -61,6 +61,34 @@ public class EmergencyCallManager {
         activeCalls.add(call);
     }
 
+    /**
+     * Merges a remotely-received call into the local list.
+     * If no call with the same caller name exists, it is added.
+     * If it does exist, only state changes (medic, rejection) are applied.
+     * This is called from the API polling loop on the client thread.
+     */
+    public void mergeRemoteCall(EmergencyCall remote) {
+        if (remote == null || remote.getCallerName() == null) return;
+
+        for (EmergencyCall local : activeCalls) {
+            if (local.getCallerName().equalsIgnoreCase(remote.getCallerName())) {
+                // Update state on existing call if changed remotely
+                if (remote.isAccepted() && !local.isAccepted()) {
+                    local.setAssignedMedic(remote.getAssignedMedic());
+                }
+                if (remote.isRejected() && !local.isRejected()) {
+                    local.setRejected(remote.getRejectedBy());
+                }
+                return;
+            }
+        }
+
+        // Not found locally — add it (skip if pending, those are mid-transmission)
+        if (!remote.isPending()) {
+            activeCalls.add(remote);
+        }
+    }
+
     public void removeCallByCallerName(String callerName) {
         activeCalls.removeIf(call -> call.getCallerName().equalsIgnoreCase(callerName));
     }

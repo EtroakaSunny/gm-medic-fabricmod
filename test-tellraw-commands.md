@@ -331,3 +331,86 @@ Run all of these in order for a complete feature test:
 /tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler F3lixus hat seinen Notruf zurückgezogen."}
 ```
 
+---
+
+## 25. API Sync Commands (Client Commands — type in chat)
+
+These are client-side commands for managing the API synchronization:
+
+### Setup
+```
+/gmapi enable
+/gmapi url http://localhost:8000
+/gmapi key my-secret-api-key-123
+/gmapi interval 3
+```
+
+### Status & Reconnect
+```
+/gmapi status
+/gmapi reconnect
+```
+
+### Disable
+```
+/gmapi disable
+```
+
+### Show Help
+```
+/gmapi
+```
+
+---
+
+## 26. Full API Sync Integration Test
+
+This sequence tests the complete API sync lifecycle. You need a running FastAPI server (see `docs/API_SPEC.md`).
+
+**Step 1: Configure API**
+```
+/gmapi enable
+/gmapi url http://localhost:8000
+/gmapi key test-key-123
+/gmapi status
+```
+
+**Step 2: Enter duty (triggers API connect)**
+```
+/tellraw @a {"text":"§e┃ §620:58:12 §8» §r» ✔ Du bist nun im Dienst."}
+```
+
+**Step 3: Check API status (should show "Verbunden")**
+```
+/gmapi status
+```
+
+**Step 4: Create a call (will be sent to API)**
+```
+/tellraw @a {"text":"  ----- DATENÜBERMITTLUNG VON ZENTRALE -----"}
+/tellraw @a {"text":" - Notruf von: ApiTestPlayer"}
+/tellraw @a {"text":" - Grund: Testing API sync"}
+/tellraw @a {"text":"§e - Ortung: §f§fX: 100 Y: 64 Z: 200 (Testgebiet)"}
+/tellraw @a {"text":"  §aANNEHMEN      §eANRUFEN      §cMELDEN      §4ZURÜCKWEISEN"}
+```
+
+**Step 5: Accept call (will be sent to API)**
+```
+/tellraw @a {"text":"[FUNK] (Facharzt) TestMedic » Ich nehme den Notruf von ApiTestPlayer entgegen!"}
+```
+
+**Step 6: Remove call (will be sent to API)**
+```
+/tellraw @a {"text":"[FUNK] ZENTRALE » Der Spieler ApiTestPlayer hat seinen Notruf zurückgezogen."}
+```
+
+**Step 7: Leave duty (triggers API disconnect)**
+```
+/tellraw @a {"text":"Du hast den Dienst verlassen."}
+```
+
+**Step 8: Verify disconnected**
+```
+/gmapi status
+```
+
