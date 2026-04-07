@@ -29,6 +29,14 @@ public class EmergencyCall {
     private long rejectedAtMs = -1;
     private String rejectedBy;
 
+    // Resolved state: call is done (revived, withdrawn, reached, etc.) — gray out before removing
+    private boolean resolved = false;
+    private long resolvedAtMs = -1;
+    private String resolvedReason;
+
+    // Entangled state: multiple transmissions arrived simultaneously and data may be mixed up
+    private boolean entangled = false;
+
     /** Creates a fully resolved call (all data known). */
     public EmergencyCall(String callerName, String reason, double x, double y, double z, String locationName, CallType type) {
         this.callerName = callerName;
@@ -43,9 +51,9 @@ public class EmergencyCall {
         this.assignedMedic = null;
     }
 
-    /** Creates a placeholder call shown immediately when the header line arrives. */
-    public static EmergencyCall pending() {
-        EmergencyCall c = new EmergencyCall("...", "...", 0, 0, 0, "", CallType.ECALL);
+    /** Creates a placeholder call shown immediately when the pre-message arrives. */
+    public static EmergencyCall pending(CallType type) {
+        EmergencyCall c = new EmergencyCall("...", "...", 0, 0, 0, "", type);
         c.pending = true;
         return c;
     }
@@ -83,6 +91,17 @@ public class EmergencyCall {
         this.y = y;
         this.z = z;
         this.locationName = locationName;
+    }
+
+    public void clearLocation() {
+        this.x = Double.NaN;
+        this.y = Double.NaN;
+        this.z = Double.NaN;
+        this.locationName = null;
+    }
+
+    public boolean hasKnownLocation() {
+        return !Double.isNaN(x) && !Double.isNaN(y) && !Double.isNaN(z);
     }
 
     public String getLocationName() {
@@ -145,6 +164,9 @@ public class EmergencyCall {
     }
 
     public String getLocationString() {
+        if (!hasKnownLocation()) {
+            return "Unbekannt";
+        }
         String coords = String.format("X: %.0f, Y: %.0f, Z: %.0f", x, y, z);
         if (locationName != null && !locationName.isEmpty()) {
             return coords + " (" + locationName + ")";
@@ -171,5 +193,44 @@ public class EmergencyCall {
     public String getRejectedBy() {
         return rejectedBy;
     }
-}
 
+    // --- Resolved state (gray-out before removal) ---
+
+    public boolean isResolved() {
+        return resolved;
+    }
+
+    public void setResolved(String reason) {
+        this.resolved = true;
+        this.resolvedAtMs = System.currentTimeMillis();
+        this.resolvedReason = reason;
+    }
+
+    public long getResolvedAtMs() {
+        return resolvedAtMs;
+    }
+
+    public String getResolvedReason() {
+        return resolvedReason;
+    }
+
+    /**
+     * Clears the resolved state so the call can be reused (e.g. when an orphaned
+     * transmission reclaims an "Unbekannt" placeholder).
+     */
+    public void clearResolved() {
+        this.resolved = false;
+        this.resolvedAtMs = -1;
+        this.resolvedReason = null;
+    }
+
+    // --- Entangled state (simultaneous transmissions) ---
+
+    public boolean isEntangled() {
+        return entangled;
+    }
+
+    public void setEntangled(boolean entangled) {
+        this.entangled = entangled;
+    }
+}

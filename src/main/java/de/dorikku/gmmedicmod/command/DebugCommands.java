@@ -223,7 +223,7 @@ public class DebugCommands {
                 .then(ClientCommandManager.literal("testoffduty")
                         .executes(ctx -> {
                             FabricClientCommandSource src = ctx.getSource();
-                            simulateChatMessage("\u00a7e\u2503 \u00a7620:59:00 \u00a78\u00bb \u00a7rDu hast den Dienst verlassen.");
+                            simulateChatMessage("\u00a7e\u2503 \u00a7620:59:00 \u00a78\u00bb \u00a7r\u00bb \u2714 Du hast den Dienst verlassen.");
                             src.sendFeedback(Text.literal("\u00a77\u2192 \u00a7cDienst verlassen gesendet."));
                             return 1;
                         })
@@ -240,7 +240,7 @@ public class DebugCommands {
                             simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin wieder auf dem Server! *Roger*");
                             src.sendFeedback(Text.literal("\u00a7a\u2192 FUNK join gesendet"));
 
-                            simulateChatMessage("[FUNK] (Facharzt) mmlp12345 \u00bb Ich nehme den Notruf von F3lixus entgegen!");
+                            simulateChatMessage("[FUNK] (Facharzt) mmlp12345 \u00bb Ich bin nun auf dem Weg zu dem Notruf von F3lixus.");
                             src.sendFeedback(Text.literal("\u00a7e\u2192 Notruf-Annahme gesendet"));
 
                             simulateChatMessage("[FUNK] ZENTRALE \u00bb Der Spieler F3lixus hat seinen Notruf zur\u00fcckgezogen.");
@@ -249,7 +249,10 @@ public class DebugCommands {
                             simulateChatMessage("[FUNK] (Sanit\u00e4ter) DrHouse \u00bb Ich habe Toxic_padz wiederbelebt!");
                             src.sendFeedback(Text.literal("\u00a7a\u2192 Wiederbelebung gesendet"));
 
-                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin nicht mehr im Dienst. Bis dann!");
+                            simulateChatMessage("[FUNK] (Assistent) Kura_dennisYT » Ich habe BlayZzo (über die Ferne) wiederbelebt.");
+                            src.sendFeedback(Text.literal("§a→ Fern-Wiederbelebung gesendet"));
+
+                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " » Ich bin nicht mehr im Dienst. Bis dann!");
                             src.sendFeedback(Text.literal("\u00a7c\u2192 FUNK leave gesendet"));
 
                             return 1;
@@ -269,7 +272,7 @@ public class DebugCommands {
                             simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin wieder auf dem Server! *Roger*");
 
                             // Step 2: Death call comes in
-                            simulateChatMessage("[FUNK] ZENTRALE \u00bb Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten r\u00fcber!");
+                            simulateChatMessage("[FUNK] ZENTRALE \u00bb Wir haben eine neue Todesmeldung erhalten - ich schicke euch die Daten r\u00fcber!");
                             simulateChatMessage("\u00a7e\u2503 \u00a7620:58:30 \u00a78\u00bb \u00a7r  ----- DATEN\u00dcBERMITTLUNG VON ZENTRALE -----");
                             simulateChatMessage("\u00a7e\u2503 \u00a7620:58:30 \u00a78\u00bb \u00a7r - Betroffener: Toxic_padz");
                             simulateChatMessage("\u00a7e\u2503 \u00a7620:58:30 \u00a78\u00bb \u00a7r - Verbleibende Zeit: 4 Minuten, 58 Sekunden");
@@ -293,52 +296,13 @@ public class DebugCommands {
                             simulateChatMessage("  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
 
                             // Step 4: Medic accepts F3lixus call
-                            simulateChatMessage("[FUNK] (Facharzt) mmlp12345 \u00bb Ich nehme den Notruf von F3lixus entgegen!");
+                            simulateChatMessage("[FUNK] (Facharzt) mmlp12345 \u00bb Ich bin nun auf dem Weg zu dem Notruf von F3lixus.");
 
                             src.sendFeedback(Text.literal("\u00a7a\u2714 Volle Simulation abgeschlossen. HUD sollte 2 Notrufe zeigen."));
                             return 1;
                         })
                 )
 
-                // /gm testrealformat — simulates the REAL GermanMiner server format with Ⓛ instead of [FUNK]
-                .then(ClientCommandManager.literal("testrealformat")
-                        .executes(ctx -> {
-                            FabricClientCommandSource src = ctx.getSource();
-                            String playerName = ctx.getSource().getPlayer().getNameForScoreboard();
-
-                            src.sendFeedback(Text.literal("\u00a76\u00a7l--- Real GermanMiner Format Simulation ---"));
-                            src.sendFeedback(Text.literal("\u00a77Uses \u24C1 [Rank] Player \u00bb format (real server format)"));
-
-                            // Step 1: FUNK join with REAL format: Ⓛ [Rank] Player » message
-                            simulateChatMessage("\u24C1 [Notarzt] " + playerName + " \u00bb Ich bin wieder auf dem Server! *Roger*");
-                            src.sendFeedback(Text.literal("\u00a7a\u2192 Real FUNK join gesendet"));
-
-                            // Step 2: ZENTRALE new call
-                            simulateChatMessage("\u24C1 [ZENTRALE] ZENTRALE \u00bb Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten r\u00fcber!");
-
-                            // Step 3: Death transmission
-                            simulateChatMessage("  ----- DATEN\u00dcBERMITTLUNG VON ZENTRALE -----");
-                            simulateChatMessage(" - Betroffener: Toxic_padz");
-                            simulateChatMessage(" - Verbleibende Zeit: 4 Minuten, 58 Sekunden");
-                            simulateChatMessage(" - Todesursache: T\u00f6tungsdelikt");
-                            simulateChatMessage(" - Distanz: 2733 Meter");
-                            simulateChatMessage("\u00a7e - Ortung: \u00a7f\u00a7fX: -1488 Y: 63 Z: -2095 (Offenbach Nord)");
-                            simulateChatMessage(" - Auf dem Weg: Niemand!");
-                            simulateChatMessage("");
-                            simulateChatMessage("  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
-
-                            // Step 4: Another medic accepts with real format
-                            simulateChatMessage("\u24C1 [Facharzt] mmlp12345 \u00bb Ich nehme den Notruf von Toxic_padz entgegen!");
-                            src.sendFeedback(Text.literal("\u00a7e\u2192 Real Notruf-Annahme gesendet"));
-
-                            // Step 5: FUNK leave with real format
-                            simulateChatMessage("\u24C1 [Notarzt] " + playerName + " \u00bb Ich bin nicht mehr im Dienst. Bis dann!");
-                            src.sendFeedback(Text.literal("\u00a7c\u2192 Real FUNK leave gesendet"));
-
-                            src.sendFeedback(Text.literal("\u00a7a\u2714 Real-Format Simulation abgeschlossen."));
-                            return 1;
-                        })
-                )
 
                 // /gm help
                 .then(ClientCommandManager.literal("help")
@@ -349,7 +313,6 @@ public class DebugCommands {
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm death <name> <grund> \u00a77- Todesmeldung direkt hinzuf\u00fcgen"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a76\u00a7l--- Realistische Simulationen (via MessageHandler) ---"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testfull \u00a77- Volle GermanMiner-Simulation ([FUNK] Format)"));
-                            ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testrealformat \u00a77- Echtes GermanMiner-Format (\u24C1 [Rank] Format)"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testdeath [name] \u00a77- DATEN\u00dcBERMITTLUNG (Tod) simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testcall [name] \u00a77- DATEN\u00dcBERMITTLUNG (Notruf) simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testduty \u00a77- Dienst betreten simulieren"));
@@ -385,7 +348,7 @@ public class DebugCommands {
 
         src.sendFeedback(Text.literal("\u00a77Simuliere DATEN\u00dcBERMITTLUNG (Tod) f\u00fcr: \u00a7f" + name));
 
-        simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r[FUNK] ZENTRALE \u00bb Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten r\u00fcber!");
+        simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r[FUNK] ZENTRALE \u00bb Wir haben eine neue Todesmeldung erhalten - ich schicke euch die Daten r\u00fcber!");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r  ----- DATEN\u00dcBERMITTLUNG VON ZENTRALE -----");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r - Betroffener: " + name);
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r - Verbleibende Zeit: 4 Minuten, 58 Sekunden");

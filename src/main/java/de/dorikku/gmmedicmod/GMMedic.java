@@ -10,3 +10,4 @@ public class GMMedic implements ModInitializer {
         LOGGER.info("GM Medic initialized!");
     }
 }
+
