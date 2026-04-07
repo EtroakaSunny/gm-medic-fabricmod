@@ -249,7 +249,10 @@ public class DebugCommands {
                             simulateChatMessage("[FUNK] (Sanit\u00e4ter) DrHouse \u00bb Ich habe Toxic_padz wiederbelebt!");
                             src.sendFeedback(Text.literal("\u00a7a\u2192 Wiederbelebung gesendet"));
 
-                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin nicht mehr im Dienst. Bis dann!");
+                            simulateChatMessage("[FUNK] (Assistent) Kura_dennisYT » Ich habe BlayZzo (über die Ferne) wiederbelebt.");
+                            src.sendFeedback(Text.literal("§a→ Fern-Wiederbelebung gesendet"));
+
+                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " » Ich bin nicht mehr im Dienst. Bis dann!");
                             src.sendFeedback(Text.literal("\u00a7c\u2192 FUNK leave gesendet"));
 
                             return 1;

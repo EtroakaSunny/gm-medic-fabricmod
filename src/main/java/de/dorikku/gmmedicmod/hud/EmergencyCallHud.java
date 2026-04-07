@@ -40,6 +40,7 @@ public class EmergencyCallHud {
     private static final int MEDIC_COLOR     = 0xFF55FFFF; // Cyan
     private static final int NO_CALLS_COLOR  = 0xFF888888; // Dark gray
     private static final int PENDING_COLOR   = 0xFFFFFF55; // Yellow
+    private static final int ENTANGLED_COLOR = 0xFFFF5555; // Red (entangled/error indicator)
 
     // Death timer colors
     private static final int TIMER_OK     = 0xFF55FF55; // > 3 min
@@ -66,12 +67,15 @@ public class EmergencyCallHud {
         TextRenderer textRenderer = client.textRenderer;
         List<EmergencyCall> calls = mgr.getActiveCalls();
 
-        // Auto-remove expired entries
+        // Timeout any pending transmission that has been parsing for too long
+        mgr.timeoutExpiredPendingCalls();
+
+        // Auto-remove expired entries (by object identity to avoid mass-removing calls sharing a name)
         long now = System.currentTimeMillis();
         calls.stream()
                 .filter(c -> c.hasTimer() && !c.isResolved() && c.getDeadlineMs() > 0 && now > c.getDeadlineMs() + 10_000L)
                 .toList()
-                .forEach(c -> mgr.removeCallByCallerName(c.getCallerName()));
+                .forEach(mgr::removeCallInstance);
         mgr.removeExpiredRejectedCalls(10_000L);
         mgr.removeExpiredResolvedCalls(5_000L);
 
@@ -140,6 +144,7 @@ public class EmergencyCallHud {
         boolean isDeath = call.getType() == EmergencyCall.CallType.DEATH;
         boolean isRejected = call.isRejected();
         boolean isResolved = call.isResolved();
+        boolean isEntangled = call.isEntangled();
 
         // Type label & color
         String typeLabel = isDeath ? "\u2620 Tod" : "\ud83d\udd14 Notruf";
@@ -163,7 +168,7 @@ public class EmergencyCallHud {
             timerStr = remaining > 0 ? String.format(" %d:%02d", remaining / 60, remaining % 60) : " \u2717";
             timerColor = remaining <= 0 ? TIMER_CRIT
                     : remaining < 30 ? ((System.currentTimeMillis() / 500) % 2 == 0 ? TIMER_CRIT : TIMER_FLASH)
-                    : remaining < 60 ? TIMER_URGENT
+                    : remaining < 120 ? TIMER_URGENT
                     : remaining < 180 ? TIMER_WARN : TIMER_OK;
         }
 
@@ -227,6 +232,12 @@ public class EmergencyCallHud {
         int maxWidth = panelWidth - padding * 2 - indent;
 
         if (compact) {
+            // Entangled warning line (compact)
+            if (isEntangled) {
+                ctx.drawText(text, "⚠ Fehler", x + indent, y, ENTANGLED_COLOR, true);
+                y += lineHeight;
+            }
+
             // Single line: reason (truncated)
             String reasonLine = call.getReason();
             if (text.getWidth(reasonLine) > maxWidth) {
@@ -239,9 +250,11 @@ public class EmergencyCallHud {
             y += lineHeight;
 
             // Compact coords
-            String locLine = String.format("%.0f %.0f %.0f", call.getX(), call.getY(), call.getZ());
+            String locLine = call.hasKnownLocation()
+                    ? String.format("%.0f %.0f %.0f", call.getX(), call.getY(), call.getZ())
+                    : "Unbekannt";
             // Truncate coords if they're too wide on their own
-            if (text.getWidth(locLine) > maxWidth) {
+            if (call.hasKnownLocation() && text.getWidth(locLine) > maxWidth) {
                 locLine = String.format("%.0f %.0f", call.getX(), call.getZ());
             }
             ctx.drawText(text, locLine, x + indent, y, infoColor, true);
@@ -290,11 +303,19 @@ public class EmergencyCallHud {
 
             // Location
             String locName = call.getLocationName();
-            String locLine = (showCoords || locName == null || locName.isEmpty())
+            String locLine = !call.hasKnownLocation()
+                    ? "Ort: Unbekannt"
+                    : (showCoords || locName == null || locName.isEmpty())
                     ? "Ort: " + String.format("X:%.0f Y:%.0f Z:%.0f", call.getX(), call.getY(), call.getZ())
                     : "Ort: " + locName;
             ctx.drawText(text, locLine, x + indent, y, infoColor, true);
             y += lineHeight;
+
+            // Entangled warning line (normal mode)
+            if (isEntangled) {
+                ctx.drawText(text, "\u26a0 Fehler: Daten verschr\u00e4nkt", x + indent, y, ENTANGLED_COLOR, true);
+                y += lineHeight;
+            }
 
             // Resolved label
             if (isResolved) {
@@ -326,11 +347,14 @@ public class EmergencyCallHud {
     private static int calculateEntryHeight(EmergencyCall call, int lineHeight, boolean compact) {
         if (call.isPending()) return 2 * lineHeight;
         if (compact) {
-            // header (index+status+caller) + reason + coords = 3 lines
-            return 3 * lineHeight;
+            // header (index+status+caller) + reason + coords = 3 lines (+1 if entangled)
+            int lines = 3;
+            if (call.isEntangled()) lines++;
+            return lines * lineHeight;
         }
         int lines = 4; // type + caller + reason + location
-        if (call.isResolved()) lines++;          // resolved reason label
+        if (call.isEntangled()) lines++;              // entangled warning label
+        if (call.isResolved()) lines++;               // resolved reason label
         else if (call.isRejected() || call.isAccepted()) lines++; // rejected or medic label
         return lines * lineHeight;
     }

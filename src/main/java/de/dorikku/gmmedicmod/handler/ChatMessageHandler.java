@@ -42,7 +42,7 @@ public class ChatMessageHandler {
             Pattern.compile("Ich habe den Notruf von (.+?)\\s+zur\u00fcckgewiesen");
 
     private static final Pattern WITHDRAW_CALLER = Pattern.compile("Spieler (.+?) hat");
-    private static final Pattern REVIVE_CALLER   = Pattern.compile("habe (.+?) wieder");
+    private static final Pattern REVIVE_CALLER   = Pattern.compile("Ich habe\\s+(.+?)\\s+wiederbelebt(?:[.!?]|$)");
     private static final Pattern LOGOUT_CALLER   = Pattern.compile("Spieler (.+?) hat sich ausgeloggt");
     private static final Pattern REACHED_CALLER  = Pattern.compile("Ich habe den Notruf von (.+?)\\s+erreicht");
 
@@ -53,6 +53,8 @@ public class ChatMessageHandler {
     // Extracts "PlayerName" from FUNK message before the » separator
     private static final Pattern FUNK_SENDER_SIM  = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(.+?)\\s*\u00bb");
     private static final Pattern FUNK_SENDER_ANY  = Pattern.compile("[\\])]\\s+(.+?)\\s*\u00bb");
+    private static final Pattern TRANSMISSION_HEADER =
+            Pattern.compile("DATEN\\s*(?:\\u00dc|U)?BERMITTLUNG\\s+VON\\s+ZENTRALE", Pattern.CASE_INSENSITIVE);
 
 
     // --- Public entry point ---
@@ -203,15 +205,23 @@ public class ChatMessageHandler {
             return;
         }
 
-        // Transmission header (DATENÜBERMITTLUNG VON ZENTRALE) — arrives with the data lines,
-        // just skip it since startParsing() was already called on the pre-message.
-        if (msg.contains("DATEN") && msg.contains("BERMITTLUNG VON ZENTRALE")) {
-            // If state is not PARSING (e.g. pre-message was missed), start parsing now as fallback.
-            // But NOT if a call was just finalized — the header can arrive after ANNEHMEN in the
-            // same message batch due to processing order, which would create a duplicate.
-            if (manager.getState() != ParsingState.PARSING && !manager.wasRecentlyFinalized(1000)) {
-                manager.startParsing(false);  // Type unknown from header alone — data lines will set it
-                GMMedic.LOGGER.info("[GM-Medic] Transmission started (fallback from header)");
+        // Transmission header (DATENÜBERMITTLUNG VON ZENTRALE)
+        // If we are IDLE, this is an orphaned transmission whose pre-message was consumed
+        // by entanglement; start orphan parsing so the data lines can be captured.
+        // If we are PARSING and the current pending call already has a caller name set,
+        // this header marks the start of a DIFFERENT data block — finalize the current call
+        // first, then start orphan parsing for the new one. If the pending call is still
+        // unnamed ("..."), this header belongs to the current call — just keep parsing.
+        if (TRANSMISSION_HEADER.matcher(msg).find()) {
+            if (manager.getState() == ParsingState.PARSING && manager.hasPendingCallerName()) {
+                var prev = manager.finalizeCall();
+                if (prev != null) {
+                    GMMedic.LOGGER.info("[GM-Medic] Force-finalized pending call before new data block: {} — {}", prev.getCallerName(), prev.getReason());
+                }
+            }
+            if (manager.getState() == ParsingState.IDLE) {
+                manager.startOrphanParsing();
+                GMMedic.LOGGER.info("[GM-Medic] Orphaned transmission header detected — starting orphan parsing");
             }
             return;
         }
@@ -224,6 +234,8 @@ public class ChatMessageHandler {
     // --- Transmission line parsing ---
 
     private static void parseTransmissionLine(String msg) {
+        String trimmed = msg.trim();
+
         if (msg.contains("Betroffener:")) {
             manager.setCaller(extractValue(msg, "Betroffener:"), true);
             return;
@@ -264,11 +276,29 @@ public class ChatMessageHandler {
             }
             return;
         }
+        // "Auf dem Weg" is the stable footer line of data blocks; finalize here so calls are
+        // still committed if the clickable ANNEHMEN line is dropped by chat filtering.
+        if (msg.contains("Auf dem Weg:")) {
+            finalizePendingCall("footer");
+            return;
+        }
+
+        // Buttons and HQ prompt are explicit transmission end markers.
         if (msg.contains("HQ: Kannst du") || msg.contains("ANNEHMEN")) {
-            var call = manager.finalizeCall();
-            if (call != null) {
-                GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
-            }
+            finalizePendingCall("end-marker");
+            return;
+        }
+
+        // Fallback: some servers send a blank separator line after the footer and before buttons.
+        if (trimmed.isEmpty() && manager.hasPendingCallerName()) {
+            finalizePendingCall("blank-separator");
+        }
+    }
+
+    private static void finalizePendingCall(String source) {
+        var call = manager.finalizeCall();
+        if (call != null) {
+            GMMedic.LOGGER.info("[GM-Medic] Call finalized ({}): {} — {}", source, call.getCallerName(), call.getReason());
         }
     }
 
@@ -305,14 +335,17 @@ public class ChatMessageHandler {
     private static void extractAndResolve(Pattern pattern, String msg, String reason, String displayLabel) {
         Matcher m = pattern.matcher(msg);
         if (m.find()) {
-            String caller = m.group(1).trim();
+            String caller = EmergencyCallManager.normalizeCallerName(m.group(1));
+            if (caller == null) {
+                GMMedic.LOGGER.warn("[GM-Medic] Parsed empty caller for {}: {}", reason, msg);
+                return;
+            }
             manager.resolveCall(caller, displayLabel);
             GMMedic.LOGGER.info("[GM-Medic] Call resolved ({}): {}", reason, caller);
         } else {
             GMMedic.LOGGER.warn("[GM-Medic] Could not parse caller for {}: {}", reason, msg);
         }
     }
-
 
     /** Extracts the value after "Key:" from a transmission line. */
     private static String extractValue(String msg, String key) {
@@ -327,3 +360,4 @@ public class ChatMessageHandler {
         return null;
     }
 }
+
