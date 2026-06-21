@@ -5,8 +5,17 @@ import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
 
 import java.util.*;
+import java.util.UUID;
 
 public class EmergencyCallManager {
+
+    public interface CallEventListener {
+        void onCallNew(EmergencyCall call);
+        void onCallAssigned(EmergencyCall call);
+        void onCallResolved(EmergencyCall call);
+        void onCallRejected(EmergencyCall call);
+        void onDutyChanged(boolean inDuty);
+    }
 
     private static final EmergencyCallManager INSTANCE = new EmergencyCallManager();
 
@@ -33,13 +42,19 @@ public class EmergencyCallManager {
     private boolean entangled = false;
     private ParsingState state = ParsingState.IDLE;
     private long stateTimestamp = 0L;
+    private CallEventListener eventListener;
 
     private EmergencyCallManager() {}
+
+    public void setEventListener(CallEventListener listener) {
+        this.eventListener = listener;
+    }
 
     public boolean isInDuty() { return inDuty; }
 
     public void setInDuty(boolean inDuty) {
         this.inDuty = inDuty;
+        if (eventListener != null) eventListener.onDutyChanged(inDuty);
         if (!inDuty) {
             activeCalls.clear();
             preResolved.clear();
@@ -50,6 +65,47 @@ public class EmergencyCallManager {
 
     public List<EmergencyCall> getActiveCalls() {
         return Collections.unmodifiableList(activeCalls);
+    }
+
+    public EmergencyCall findByCallId(String callId) {
+        if (callId == null) return null;
+        for (EmergencyCall call : activeCalls) {
+            if (callId.equals(call.getCallId())) return call;
+        }
+        return null;
+    }
+
+    /**
+     * Add or update a call that originated on another client and was relayed by
+     * the server (sync-on-join or live CALL_SYNC). Does not fire listener events,
+     * so it never echoes back to the server.
+     */
+    public EmergencyCall upsertRemoteCall(String callId, CallType type, String caller, String reason,
+                                          double x, double y, double z, String locationName,
+                                          long deadlineMs, String assignedMedic, String suggestedMedic,
+                                          boolean resolved, String resolveReason, String rejectedBy) {
+        if (callId == null) return null;
+        EmergencyCall call = findByCallId(callId);
+        if (call == null) {
+            call = new EmergencyCall(caller, reason, x, y, z, locationName, type);
+            call.setCallId(callId);
+            call.setRemote(true);
+            if (deadlineMs > 0L) call.setDeadlineMs(deadlineMs);
+            if (locationName == null && Double.isNaN(x)) call.clearLocation();
+            activeCalls.add(call);
+        } else {
+            if (caller != null) call.setCallerName(caller);
+            if (reason != null) call.setReason(reason);
+            call.setType(type);
+            if (locationName != null || !Double.isNaN(x)) call.setLocation(x, y, z, locationName);
+        }
+        if (assignedMedic != null) call.setAssignedMedic(assignedMedic);
+        call.setSuggestedMedic(suggestedMedic);
+        if (rejectedBy != null && !call.isRejected()) call.setRejected(rejectedBy);
+        if (resolved && !call.isResolved()) {
+            call.setResolved(resolveReason != null ? resolveReason : "Erledigt");
+        }
+        return call;
     }
 
     public void addCall(EmergencyCall call) {
@@ -64,6 +120,17 @@ public class EmergencyCallManager {
         activeCalls.remove(instance);
     }
 
+    public void removeByCallId(String callId) {
+        if (callId == null) return;
+        activeCalls.removeIf(call -> callId.equals(call.getCallId()));
+    }
+
+    private void fireResolvedOnce(EmergencyCall call) {
+        if (call == null || call.isPending() || call.isApiNotifiedResolved() || eventListener == null) return;
+        call.setApiNotifiedResolved(true);
+        eventListener.onCallResolved(call);
+    }
+
     public void resolveCall(String callerName, String reason) {
         evictExpiredBuffers();
         String callerKey = callerKey(callerName);
@@ -76,6 +143,7 @@ public class EmergencyCallManager {
             }
             if (callerMatches(call, callerName) && !call.isResolved()) {
                 call.setResolved(reason);
+                fireResolvedOnce(call);
                 found = true;
             }
         }
@@ -91,6 +159,7 @@ public class EmergencyCallManager {
             for (EmergencyCall call : activeCalls) {
                 if (call.isPending() && "Unbekannt".equals(call.getCallerName()) && !call.isResolved()) {
                     call.setResolved(reason);
+                    fireResolvedOnce(call);
                 }
             }
         }
@@ -115,6 +184,7 @@ public class EmergencyCallManager {
             }
             if (targetCall != null) {
                 targetCall.setResolved(reason);
+                fireResolvedOnce(targetCall);
                 GMMedic.LOGGER.info("[GM-Medic] Resolved pending call by fallback: {} ({})", targetCall.getCallerName(), reason);
             }
         }
@@ -132,6 +202,7 @@ public class EmergencyCallManager {
         for (EmergencyCall call : activeCalls) {
             if (callerMatches(call, callerName) && !call.isPending()) {
                 call.setAssignedMedic(medicName);
+                if (eventListener != null) eventListener.onCallAssigned(call);
                 GMMedic.LOGGER.info("[GM-Medic] Assigned medic {} to call of {}", medicName, callerName);
                 return;
             }
@@ -156,6 +227,7 @@ public class EmergencyCallManager {
         for (EmergencyCall call : activeCalls) {
             if (callerMatches(call, callerName)) {
                 call.setRejected(medicName);
+                if (eventListener != null) eventListener.onCallRejected(call);
                 break;
             }
         }
@@ -185,6 +257,7 @@ public class EmergencyCallManager {
             EmergencyCall timedOut = finalizeCall();
             if (timedOut != null && !timedOut.isResolved()) {
                 timedOut.setResolved("Zeitüberschreitung");
+                fireResolvedOnce(timedOut);
             }
         }
     }
@@ -322,6 +395,8 @@ public class EmergencyCallManager {
         pendingCall = null;
         state = ParsingState.IDLE;
         entangled = false;
+        if (call.getCallId() == null) call.setCallId(UUID.randomUUID().toString());
+        if (eventListener != null) eventListener.onCallNew(call);
         GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}{}", call.getCallerName(), call.getReason(),
                 call.isResolved() ? " (resolved: " + call.getResolvedReason() + ")" : "");
         return call;

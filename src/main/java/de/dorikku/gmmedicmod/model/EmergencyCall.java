@@ -25,6 +25,10 @@ public class EmergencyCall {
     private long resolvedAtMs = -1L;
     private String resolvedReason;
     private boolean entangled = false;
+    private String callId;
+    private boolean apiNotifiedResolved = false;
+    private String suggestedMedic;
+    private boolean remote = false;
 
     public EmergencyCall(String callerName, String reason, double x, double y, double z, String locationName, CallType type) {
         this.callerName = callerName;
@@ -95,6 +99,7 @@ public class EmergencyCall {
 
     public boolean hasTimer() { return deadlineMs >= 0L; }
     public long getDeadlineMs() { return deadlineMs; }
+    public void setDeadlineMs(long deadlineMs) { this.deadlineMs = deadlineMs; }
 
     public String getAssignedMedic() { return assignedMedic; }
     public void setAssignedMedic(String assignedMedic) { this.assignedMedic = assignedMedic; }
@@ -136,4 +141,16 @@ public class EmergencyCall {
 
     public boolean isEntangled() { return entangled; }
     public void setEntangled(boolean entangled) { this.entangled = entangled; }
+
+    public String getCallId() { return callId; }
+    public void setCallId(String callId) { this.callId = callId; }
+
+    public boolean isApiNotifiedResolved() { return apiNotifiedResolved; }
+    public void setApiNotifiedResolved(boolean notified) { this.apiNotifiedResolved = notified; }
+
+    public String getSuggestedMedic() { return suggestedMedic; }
+    public void setSuggestedMedic(String suggestedMedic) { this.suggestedMedic = suggestedMedic; }
+
+    public boolean isRemote() { return remote; }
+    public void setRemote(boolean remote) { this.remote = remote; }
 }
