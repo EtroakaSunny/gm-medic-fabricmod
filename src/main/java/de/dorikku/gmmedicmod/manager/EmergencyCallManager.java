@@ -6,6 +6,7 @@ import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
 
 import java.util.*;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class EmergencyCallManager {
 
@@ -35,6 +36,9 @@ public class EmergencyCallManager {
     private EmergencyCall pendingCall = null;
     private final Map<String, TimestampedValue> preResolved = new HashMap<>();
     private final Map<String, TimestampedValue> preAssigned = new HashMap<>();
+    /** Player key -> expiry epoch ms for temporary keyword highlights (e.g. "heal"/"low" in chat). */
+    private final Map<String, Long> keywordHighlights = new ConcurrentHashMap<>();
+    private static final long KEYWORD_HIGHLIGHT_MS = 30_000L;
     private static final long PARSING_TIMEOUT_MS = 10_000L;
     private static final long PRE_BUFFER_EXPIRY_MS = 30_000L;
     private static final long DUPLICATE_WINDOW_MS = 10_000L;
@@ -59,8 +63,26 @@ public class EmergencyCallManager {
             activeCalls.clear();
             preResolved.clear();
             preAssigned.clear();
+            keywordHighlights.clear();
             resetState();
         }
+    }
+
+    /**
+     * Flag a player to be highlighted for {@value #KEYWORD_HIGHLIGHT_MS} ms because they wrote a
+     * keyword like "heal"/"low" in chat. Re-writing the keyword refreshes the timer.
+     */
+    public void addKeywordHighlight(String playerName) {
+        String key = callerKey(playerName);
+        if (key == null) return;
+        keywordHighlights.put(key, System.currentTimeMillis() + KEYWORD_HIGHLIGHT_MS);
+    }
+
+    /** Normalized lowercase keys of players whose keyword highlight is still active (expired ones pruned). */
+    public Set<String> getKeywordHighlightTargets() {
+        long now = System.currentTimeMillis();
+        keywordHighlights.values().removeIf(expiry -> expiry <= now);
+        return new HashSet<>(keywordHighlights.keySet());
     }
 
     public List<EmergencyCall> getActiveCalls() {

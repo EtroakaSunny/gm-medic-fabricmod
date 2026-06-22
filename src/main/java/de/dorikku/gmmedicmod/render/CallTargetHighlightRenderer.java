@@ -19,6 +19,7 @@ import net.minecraft.util.shape.VoxelShapes;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Draws an outline box around every player that currently has an open emergency
@@ -28,9 +29,10 @@ import java.util.Map;
  */
 public final class CallTargetHighlightRenderer {
 
-    // RGB triples matching the HUD palette (DEATH = red, ECALL = orange).
+    // RGB triples matching the HUD palette (DEATH = red, ECALL = orange, HEAL keyword = green).
     private static final float[] DEATH_RGB = {1.0f, 0.33f, 0.33f};
     private static final float[] ECALL_RGB = {1.0f, 0.66f, 0.0f};
+    private static final float[] HEAL_RGB  = {0.33f, 1.0f, 0.33f};
     private static final float BOX_ALPHA = 0.85f;
     private static final float LINE_WIDTH = 2.5f;
 
@@ -43,7 +45,8 @@ public final class CallTargetHighlightRenderer {
         if (!HudConfig.getInstance().isHighlightEnabled()) return;
 
         Map<String, EmergencyCall.CallType> targets = collectOpenCallTargets();
-        if (targets.isEmpty()) return;
+        Set<String> healTargets = EmergencyCallManager.getInstance().getKeywordHighlightTargets();
+        if (targets.isEmpty() && healTargets.isEmpty()) return;
 
         double range = HudConfig.getInstance().getHighlightRange();
         double rangeSq = range * range;
@@ -57,10 +60,16 @@ public final class CallTargetHighlightRenderer {
             if (player == client.player) continue;
             if (client.player.squaredDistanceTo(player) > rangeSq) continue;
 
+            // An open call takes colour priority; otherwise a keyword highlight ("heal"/"low") shows green.
             EmergencyCall.CallType type = matchTarget(targets, player);
-            if (type == null) continue;
-
-            float[] rgb = type == EmergencyCall.CallType.DEATH ? DEATH_RGB : ECALL_RGB;
+            float[] rgb;
+            if (type != null) {
+                rgb = type == EmergencyCall.CallType.DEATH ? DEATH_RGB : ECALL_RGB;
+            } else if (playerMatches(healTargets, player)) {
+                rgb = HEAL_RGB;
+            } else {
+                continue;
+            }
             Box box = lerpedBox(player, tickDelta);
 
             // The matrix stack is anchored at the camera, so feed the box in camera-relative space.
@@ -98,6 +107,20 @@ public final class CallTargetHighlightRenderer {
             if (display != null && targets.containsKey(display)) return targets.get(display);
         }
         return null;
+    }
+
+    /** Like {@link #matchTarget} but for a plain set of normalized name keys (keyword highlights). */
+    private static boolean playerMatches(Set<String> keys, AbstractClientPlayerEntity player) {
+        if (keys.isEmpty()) return false;
+        String account = normalizeKey(player.getGameProfile().name());
+        if (account != null && keys.contains(account)) return true;
+        String name = normalizeKey(player.getName().getString());
+        if (name != null && keys.contains(name)) return true;
+        if (player.getDisplayName() != null) {
+            String display = normalizeKey(player.getDisplayName().getString());
+            if (display != null && keys.contains(display)) return true;
+        }
+        return false;
     }
 
     private static String normalizeKey(String name) {
