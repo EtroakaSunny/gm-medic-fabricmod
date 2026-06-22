@@ -32,6 +32,10 @@ bin/
 
 run/
 
+# python web server (local app + virtualenv, not part of the mod)
+
+server/
+
 # java
 
 hs_err_*.log
