@@ -3,7 +3,10 @@ plugins {
 	id 'maven-publish'
 }
 
-version = "${project.mod_version}+${project.minecraft_version}"
+// Jar name uses build_version when set (e.g. the 26.x branches, which build against
+// 1.21.11 mappings but ship as a 26.x artifact); otherwise it falls back to minecraft_version.
+def buildVersion = project.findProperty('build_version') ?: project.minecraft_version
+version = "${project.mod_version}+${buildVersion}"
 group = project.maven_group
 
 base {
