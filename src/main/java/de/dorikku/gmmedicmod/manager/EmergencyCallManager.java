@@ -37,7 +37,6 @@ public class EmergencyCallManager {
     private final Map<String, TimestampedValue> preAssigned = new HashMap<>();
     private static final long PARSING_TIMEOUT_MS = 10_000L;
     private static final long PRE_BUFFER_EXPIRY_MS = 30_000L;
-    private static final long DUPLICATE_WINDOW_MS = 10_000L;
     private static final int ENTANGLED_DEFAULT_TIMER_SECONDS = 300;
     private boolean entangled = false;
     private ParsingState state = ParsingState.IDLE;
@@ -374,16 +373,22 @@ public class EmergencyCallManager {
         }
         checkPreResolved(pendingCall);
         checkPreAssigned(pendingCall);
+
+        // Duplication remover: if this caller already has an active, unresolved call of the
+        // same type on the HUD (DEATH and ECALL are kept distinct), drop the new transmission
+        // instead of showing a second identical entry.
+        if (!pendingCall.isResolved() && isCallComplete(pendingCall) && isDuplicateTransmission(pendingCall)) {
+            GMMedic.LOGGER.info("[GM-Medic] Discarded duplicate {} call for {}",
+                    pendingCall.getType(), pendingCall.getCallerName());
+            activeCalls.remove(pendingCall);
+            pendingCall = null;
+            state = ParsingState.IDLE;
+            entangled = false;
+            return null;
+        }
+
         if ((entangled || pendingCall.isEntangled()) && !pendingCall.isResolved()) {
             if (isCallComplete(pendingCall)) {
-                if (isDuplicateTransmission(pendingCall)) {
-                    GMMedic.LOGGER.info("[GM-Medic] Discarded duplicate transmission for {}", pendingCall.getCallerName());
-                    activeCalls.remove(pendingCall);
-                    pendingCall = null;
-                    state = ParsingState.IDLE;
-                    entangled = false;
-                    return null;
-                }
                 pendingCall.setEntangled(false);
             } else {
                 pendingCall.setEntangled(true);
@@ -443,16 +448,21 @@ public class EmergencyCallManager {
                 && call.getReason() != null && !"...".equals(call.getReason());
     }
 
+    /**
+     * True when {@code candidate} would be a duplicate of a call already on the HUD: the same
+     * caller with an active (non-pending, unresolved) call of the <em>same type</em>. DEATH and
+     * ECALL are treated as distinct, so a death and an emergency call from one player coexist.
+     */
     private boolean isDuplicateTransmission(EmergencyCall candidate) {
+        if (candidate == null) return false;
         String key = callerKey(candidate.getCallerName());
         if (key == null) return false;
-        long now = System.currentTimeMillis();
         for (EmergencyCall existing : activeCalls) {
             if (existing != candidate
                     && !existing.isPending()
                     && !existing.isResolved()
-                    && callerMatches(existing, candidate.getCallerName())
-                    && now - existing.getCreationTime() < DUPLICATE_WINDOW_MS) {
+                    && existing.getType() == candidate.getType()
+                    && callerMatches(existing, candidate.getCallerName())) {
                 return true;
             }
         }
