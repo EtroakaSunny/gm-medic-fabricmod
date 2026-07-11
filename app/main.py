@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, database
 from .api_admin import router as api_router
+from .map_proxy import router as map_router
 from .security import hash_password
 from .ws_admin import router as admin_ws_router
 from .ws_mod import router as mod_ws_router
@@ -59,6 +60,7 @@ app = FastAPI(title="GM-Medic Server", lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(mod_ws_router)
 app.include_router(admin_ws_router)
+app.include_router(map_router)
 
 # Serve the admin GUI from "/" (html=True serves index.html for the root).
 app.mount("/", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")

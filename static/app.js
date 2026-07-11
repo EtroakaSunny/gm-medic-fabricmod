@@ -37,6 +37,9 @@ function showLogin() {
 function showDash() {
     loginView.classList.add("hidden");
     dashView.classList.remove("hidden");
+    initMap();
+    // The panel just became visible — Leaflet needs a size recalculation.
+    requestAnimationFrame(() => map && map.invalidateSize());
     connectWs();
     refreshMedics();
 }
@@ -114,7 +117,7 @@ function handleWsMessage(msg) {
     }
     renderMedics();
     renderCalls();
-    drawMap();
+    updateMap();
 }
 
 // --- Medic management ---
@@ -208,89 +211,125 @@ function renderCalls() {
     }
 }
 
-// --- Canvas map ---
+// --- Leaflet map on GermanMiner BlueMap tiles (proxied via /map/) ---
+//
+// BlueMap low-res tiles: 500×500 px PNGs, lodFactor 5, 3 LODs. At LOD 1 one
+// pixel is one block; each LOD zooms out by 5×. We map Leaflet zoom 0/1/2 to
+// LOD 3/2/1 with a custom CRS whose scale steps by 5 instead of 2, so tile
+// indices line up exactly with BlueMap's floor(block / (500 · 5^(lod−1))).
+// Block (x,z) lives at latLng(-z, x): 1 px = 1 block at zoom 2, north up.
 
-const canvas = document.getElementById("map");
-const ctx = canvas.getContext("2d");
+const MAP_ID = "world";
+const MAP_BASE = `map/maps/${MAP_ID}`;
+const BLUEMAP_PUBLIC = "http://map.germanminer.de:2086";
 
-function fitCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { w: rect.width, h: rect.height };
+const BlueMapCRS = L.extend({}, L.CRS.Simple, {
+    scale: (zoom) => Math.pow(5, zoom) / 25,
+    zoom: (scale) => Math.log(25 * scale) / Math.log(5),
+});
+
+// BlueMap low-res PNGs stack a data map below the color map (500×1000 px),
+// so tiles are drawn onto a canvas cropped to the top (color) half.
+const BlueMapTileLayer = L.GridLayer.extend({
+    createTile(coords, done) {
+        const size = this.getTileSize();
+        const tile = document.createElement("canvas");
+        tile.width = size.x;
+        tile.height = size.y;
+        const img = new Image();
+        img.onload = () => {
+            tile.getContext("2d").drawImage(img, 0, 0, img.width, img.width, 0, 0, size.x, size.y);
+            done(null, tile);
+        };
+        img.onerror = () => done(null, tile); // unrendered tile — stays transparent
+        img.src = `${MAP_BASE}/tiles/${3 - coords.z}/x${coords.x}/z${coords.y}.png`;
+        return tile;
+    },
+});
+
+let map = null;
+let mapFitted = false;
+const medicMarkers = new Map(); // username -> L.CircleMarker
+const callMarkers = new Map();  // callId -> L.Marker
+
+function initMap() {
+    if (map) return;
+    map = L.map("map", {
+        crs: BlueMapCRS,
+        minZoom: 0,
+        maxZoom: 3,          // zoom 3 upscales LOD-1 tiles 5× for close-ups
+        zoomSnap: 1,
+        attributionControl: false,
+    });
+    new BlueMapTileLayer({
+        tileSize: 500,
+        minNativeZoom: 0,
+        maxNativeZoom: 2,
+    }).addTo(map);
+    map.setView([0, 0], 1);
+    document.getElementById("map-fit").addEventListener("click", () => fitMapToMarkers(true));
 }
 
-function drawMap() {
-    if (dashView.classList.contains("hidden")) return;
-    const { w, h } = fitCanvas();
-    ctx.clearRect(0, 0, w, h);
+function blockLatLng(x, z) { return [-z, x]; }
 
-    const points = [];
-    medics.forEach(m => { if (m.x != null && m.z != null) points.push({ x: m.x, z: m.z }); });
-    calls.forEach(c => { if (!c.resolved && c.x != null && c.z != null) points.push({ x: c.x, z: c.z }); });
+function blueMapLink(x, y, z) {
+    return `${BLUEMAP_PUBLIC}/#${MAP_ID}:${Math.round(x)}:${Math.round(y || 64)}:${Math.round(z)}:200:0:0:0:1:flat`;
+}
 
-    if (points.length === 0) {
-        ctx.fillStyle = "#5a6270";
-        ctx.font = "13px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText("Keine Positionsdaten", w / 2, h / 2);
-        return;
+function markerPopup(title, x, y, z) {
+    return `<b>${escapeHtml(title)}</b><br>X ${Math.round(x)} · Z ${Math.round(z)}<br>` +
+           `<a href="${blueMapLink(x, y, z)}" target="_blank" rel="noopener">In BlueMap öffnen</a>`;
+}
+
+function syncMarkers(existing, wanted, makeMarker) {
+    for (const key of [...existing.keys()]) {
+        if (!wanted.has(key)) { existing.get(key).remove(); existing.delete(key); }
     }
-
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const p of points) {
-        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
-    }
-    // Avoid zero-size span.
-    const spanX = Math.max(maxX - minX, 50);
-    const spanZ = Math.max(maxZ - minZ, 50);
-    const pad = 36;
-    const scale = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanZ);
-    const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-
-    // World (x,z) -> screen. North (−Z) is up.
-    const sx = (x) => w / 2 + (x - cx) * scale;
-    const sy = (z) => h / 2 + (z - cz) * scale;
-
-    // Grid
-    ctx.strokeStyle = "#1b2129";
-    ctx.lineWidth = 1;
-    for (let gx = Math.ceil(minX / 100) * 100; gx <= maxX; gx += 100) {
-        ctx.beginPath(); ctx.moveTo(sx(gx), 0); ctx.lineTo(sx(gx), h); ctx.stroke();
-    }
-    for (let gz = Math.ceil(minZ / 100) * 100; gz <= maxZ; gz += 100) {
-        ctx.beginPath(); ctx.moveTo(0, sy(gz)); ctx.lineTo(w, sy(gz)); ctx.stroke();
-    }
-
-    // Calls (squares)
-    ctx.font = "11px system-ui";
-    ctx.textAlign = "left";
-    calls.forEach(c => {
-        if (c.resolved || c.x == null || c.z == null) return;
-        const x = sx(c.x), y = sy(c.z);
-        ctx.fillStyle = c.callType === "DEATH" ? "#e5534b" : "#e6943c";
-        ctx.fillRect(x - 5, y - 5, 10, 10);
-        ctx.fillStyle = "#cfd4dc";
-        ctx.fillText(c.callerName || "?", x + 8, y + 4);
-    });
-
-    // Medics (circles)
-    medics.forEach(m => {
-        if (m.x == null || m.z == null) return;
-        const x = sx(m.x), y = sy(m.z);
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = m.on_duty ? "#46c46b" : "#8b93a1";
-        ctx.fill();
-        ctx.fillStyle = "#cfd4dc";
-        ctx.fillText(m.username, x + 8, y + 4);
+    wanted.forEach((data, key) => {
+        const old = existing.get(key);
+        if (old) old.remove();
+        existing.set(key, makeMarker(data).addTo(map));
     });
 }
 
-window.addEventListener("resize", drawMap);
+function updateMap() {
+    if (!map) return;
+
+    const wantedMedics = new Map();
+    medics.forEach((m, u) => { if (m.x != null && m.z != null) wantedMedics.set(u, m); });
+    syncMarkers(medicMarkers, wantedMedics, (m) =>
+        L.circleMarker(blockLatLng(m.x, m.z), {
+            radius: 6, weight: 2, color: "#10141a",
+            fillColor: m.on_duty ? "#46c46b" : "#8b93a1", fillOpacity: 1,
+        })
+        .bindTooltip(m.username, { permanent: true, direction: "right", offset: [8, 0], className: "map-label" })
+        .bindPopup(markerPopup(m.username, m.x, m.y, m.z))
+    );
+
+    const wantedCalls = new Map();
+    calls.forEach((c, id) => { if (!c.resolved && c.x != null && c.z != null) wantedCalls.set(id, c); });
+    syncMarkers(callMarkers, wantedCalls, (c) =>
+        L.marker(blockLatLng(c.x, c.z), {
+            icon: L.divIcon({ className: `call-marker ${c.callType === "DEATH" ? "death" : "ecall"}`, iconSize: [12, 12] }),
+        })
+        .bindTooltip(c.callerName || "?", { permanent: true, direction: "right", offset: [8, 0], className: "map-label" })
+        .bindPopup(markerPopup(`${c.callType === "DEATH" ? "Tod" : "E-Call"}: ${c.callerName || "?"}`, c.x, c.y, c.z))
+    );
+
+    if (!mapFitted && (medicMarkers.size || callMarkers.size)) {
+        mapFitted = true;
+        fitMapToMarkers(false);
+    }
+}
+
+function fitMapToMarkers(animate) {
+    if (!map) return;
+    const layers = [...medicMarkers.values(), ...callMarkers.values()];
+    if (!layers.length) return;
+    map.fitBounds(L.featureGroup(layers).getBounds().pad(0.3), { maxZoom: 2, animate });
+}
+
+window.addEventListener("resize", () => { if (map) map.invalidateSize(); });
 
 // --- Utils ---
 

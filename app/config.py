@@ -34,6 +34,13 @@ ROSTER_URL = os.environ.get(
 )
 ROSTER_CACHE_SECONDS = int(os.environ.get("GM_ROSTER_CACHE_SECONDS", "60"))
 
+# Public GermanMiner BlueMap used as the admin GUI's map background. The GUI
+# fetches it through this server (/map/...) because the map host is HTTP-only
+# and sends no CORS headers. Cache lifetime applies to tiles and settings;
+# live data (players/markers) is always cached for just 2 s.
+BLUEMAP_URL = os.environ.get("GM_BLUEMAP_URL", "http://map.germanminer.de:2086").rstrip("/")
+BLUEMAP_CACHE_SECONDS = int(os.environ.get("GM_BLUEMAP_CACHE_SECONDS", "300"))
+
 
 def get_secret_key() -> str:
     """Load the JWT secret, generating and persisting one on first use."""

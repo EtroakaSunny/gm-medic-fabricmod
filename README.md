@@ -37,6 +37,8 @@ for the full walkthrough and the standalone (own Caddy) alternative.
 | `GM_SSL_CERT` / `GM_SSL_KEY` | – | Serve TLS directly instead of via reverse proxy. |
 | `GM_ROSTER_URL` | `https://acp.germanminer.de/public/fraction/medic` | Public fraction roster used for auto-approval. |
 | `GM_ROSTER_CACHE_SECONDS` | `60` | Roster cache lifetime. |
+| `GM_BLUEMAP_URL` | `http://map.germanminer.de:2086` | Public BlueMap proxied for the GUI's live map. |
+| `GM_BLUEMAP_CACHE_SECONDS` | `300` | Tile/settings cache lifetime (live data: 2 s). |
 
 ## Endpoints
 
@@ -45,6 +47,7 @@ for the full walkthrough and the standalone (own Caddy) alternative.
 | `WS /api` (alias `WS /ws`) | Mod clients. `/api` matches the mod's default URL. |
 | `WS /ws/admin?token=<jwt>` | Admin GUI live feed (snapshot + updates). |
 | `REST /api/...` | Admin REST (login, medic allow-list, tokens, calls, online). |
+| `GET /map/...` | Read-only proxy for the public GermanMiner BlueMap (see below). |
 | `/` | Static admin GUI. |
 
 ## Mod-client authentication
@@ -82,6 +85,21 @@ Two ways to get approved; both require the first frame to be
   `ALARM_ENDED` clears it and notifies all clients. Newly connected clients and
   clients going off duty receive the active alarm immediately; a 30-minute
   timeout drops alarms whose end message was missed.
+
+## Live map (BlueMap proxy)
+
+The admin GUI renders a Leaflet map (vendored under `static/vendor/leaflet/`)
+with medic and call markers on top of GermanMiner's public **BlueMap**
+(`GM_BLUEMAP_URL`). The browser cannot load that host directly — it is
+HTTP-only (mixed content on the HTTPS GUI) and sends no CORS headers — so
+`GET /map/{path}` forwards an allow-listed set of paths (low-res tiles,
+map settings, live players/markers JSON) with an in-memory cache
+(`GM_BLUEMAP_CACHE_SECONDS`; live data 2 s). The proxy is unauthenticated:
+everything behind it is already public. BlueMap details worth knowing:
+low-res tiles are 500×1000 PNGs (color map on top, data map below — the GUI
+crops to the top half), 1 px = 1 block at LOD 1, and each LOD step zooms out
+by 5× (the GUI uses a custom Leaflet CRS with scale factor 5 so BlueMap's
+tile grid lines up exactly).
 
 Live state (positions, calls) is in-memory; SQLite (`data/gm-medic.db`) stores
 admin accounts, the allow-list and bound tokens. `data/secret.key` is the JWT
