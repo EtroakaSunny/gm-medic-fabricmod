@@ -2,20 +2,23 @@
 import math
 
 
-def compute_nearest(call: dict, online: dict, reporter: str | None):
+def compute_nearest(call: dict, online: dict):
     """Return (medic_username, distance_blocks) or (None, None).
 
-    A candidate medic must be: online, on duty, not the reporter, and not
-    already assigned to another unresolved call. Distance is Euclidean in XZ.
+    Considers every online, on-duty medic with a known location — including
+    the reporter, so the announcement can name the reporter themselves. The
+    call's own caller is skipped: a dead on-duty medic would otherwise always
+    win with distance 0. Distance is Euclidean in XZ.
     """
     cx, cz = call.get("x"), call.get("z")
     if cx is None or cz is None or not math.isfinite(cx) or not math.isfinite(cz):
         return None, None
 
+    caller = (call.get("callerName") or "").lower()
     best_name = None
     best_dist = None
     for username, info in online.items():
-        if username == reporter:
+        if username.lower() == caller:
             continue
         if not info.get("on_duty"):
             continue

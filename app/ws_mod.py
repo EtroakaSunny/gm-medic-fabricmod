@@ -55,6 +55,15 @@ async def _send(ws: WebSocket, obj: dict) -> None:
     await ws.send_text(json.dumps(obj))
 
 
+def _alarm_sync(alarm: dict) -> dict:
+    return {
+        "type": "ALARM_SYNC",
+        "active": True,
+        "alarmName": alarm["alarmName"],
+        "triggeredAtMs": alarm["triggeredAtMs"],
+    }
+
+
 @router.websocket("/api")
 @router.websocket("/ws")
 async def mod_ws(ws: WebSocket):
@@ -88,6 +97,11 @@ async def mod_ws(ws: WebSocket):
 
         # Sync the new client: hand it every currently open call.
         await _send(ws, {"type": "OPEN_CALLS", "calls": state.open_calls()})
+
+        # ... and the bank alarm, if one is currently active.
+        alarm = state.active_alarm()
+        if alarm is not None:
+            await _send(ws, _alarm_sync(alarm))
 
         # 2) Main message loop.
         while True:
@@ -123,10 +137,33 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
     elif mtype == "DUTY_OFF":
         state.set_duty(username, False)
         await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
+        # Off duty now — hand over the active bank alarm (alarms target off-duty clients).
+        alarm = state.active_alarm()
+        if alarm is not None:
+            await _send(ws, _alarm_sync(alarm))
 
     elif mtype == "LOCATION_UPDATE":
         state.set_location(username, msg.get("x"), msg.get("y"), msg.get("z"))
         await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
+
+    elif mtype == "ALARM_TRIGGERED":
+        name = (msg.get("alarmName") or "").strip() or "Unbekannt"
+        active = state.active_alarm()
+        # Several on-duty medics read the same D-Funk line — only the first counts.
+        if active is None or active["alarmName"] != name:
+            state.alarm = {
+                "alarmName": name,
+                "triggeredBy": username,
+                "triggeredAtMs": int(time.time() * 1000),
+            }
+            await state.broadcast_admin({"type": "alarm_update", "alarm": state.alarm})
+            await state.broadcast_mods_off_duty(_alarm_sync(state.alarm))
+
+    elif mtype == "ALARM_ENDED":
+        if state.active_alarm() is not None:
+            state.alarm = None
+            await state.broadcast_admin({"type": "alarm_update", "alarm": None})
+            await state.broadcast_mods({"type": "ALARM_SYNC", "active": False})
 
     elif mtype == "CALL_NEW":
         call = {
@@ -147,10 +184,13 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
         await state.broadcast_admin({"type": "call_update", "call": stored})
         await state.broadcast_mods({"type": "CALL_SYNC", "call": stored}, exclude=ws)
 
-        # Compute and push the nearest free medic back to the reporter.
-        nearest, dist = compute_nearest(stored, state.online, reporter=username)
+        # Compute the nearest on-duty medic (reporter included) and announce
+        # it to every connected mod client, not just the reporter.
+        nearest, dist = compute_nearest(stored, state.online)
         if nearest is not None:
-            await _send(ws, {
+            stored["suggestedMedic"] = nearest
+            await state.broadcast_admin({"type": "call_update", "call": stored})
+            await state.broadcast_mods({
                 "type": "NEAREST_MEDIC",
                 "callId": stored["callId"],
                 "nearestMedic": nearest,

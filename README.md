@@ -9,13 +9,32 @@ computes the nearest free medic, and serves an admin GUI.
 
 ## Run
 
-Production: see **[DEPLOYMENT.md](DEPLOYMENT.md)** (Docker Compose + Caddy,
-automatic HTTPS). Local development:
-
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python run.py            # listens on 0.0.0.0:8765
 ```
+
+Or as a container (image `localhost/gm-medic-server`).
+
+## Deployment
+
+Deployed as the `gm-medic` service of the **New-GM-API-Burner** compose stack
+(`~/Documents/GM-API-Burner/New-GM-API-Burner`), tunnel profile:
+
+```bash
+cd ~/Documents/GM-API-Burner/New-GM-API-Burner
+./setup.sh --tunnel                                  # first run
+docker compose --profile tunnel up -d --build gm-medic   # redeploy after changes here
+```
+
+The burner's `.env` points `GM_MEDIC_SERVER_DIR` at this directory (build
+context) and can set `GM_MEDIC_ADMIN_PASSWORD` for the admin GUI. State
+lives in the named volume `gm_medic_data` (mounted at `/app/data`).
+
+Public ingress is a second hostname on the stack's named Cloudflare tunnel:
+`medic.dorikku.de` → `http://gm-medic:8765`, configured in the Cloudflare
+Zero Trust dashboard (TLS terminates at Cloudflare, so the mod's default
+`wss://medic.dorikku.de/api` works unchanged).
 
 ### Environment variables
 
@@ -61,7 +80,16 @@ Two ways to get approved; both require the first frame to be
 - Every call mutation reported by one client (`CALL_NEW`, `CALL_ASSIGNED`,
   `CALL_RESOLVED`, `CALL_REJECTED`) is fanned out to all other connected mod
   clients as `CALL_SYNC`, and to admin GUIs as `call_update`.
-- `CALL_NEW` additionally answers the reporter with `NEAREST_MEDIC`.
+- `CALL_NEW` additionally computes the nearest on-duty medic (reporter
+  included, the call's own caller excluded), stores it as the call's
+  `suggestedMedic` and broadcasts `NEAREST_MEDIC` to **all** mod clients,
+  which show it in chat as `GM-Medic: Der nächste Medic ist: <name>`.
+- `ALARM_TRIGGERED` (bank alarm read from the D-Funk) stores the alarm and fans
+  it out as `ALARM_SYNC` to every client **not on duty** (admin GUIs get
+  `alarm_update`); duplicate reports of the same alarm are ignored.
+  `ALARM_ENDED` clears it and notifies all clients. Newly connected clients and
+  clients going off duty receive the active alarm immediately; a 30-minute
+  timeout drops alarms whose end message was missed.
 
 Live state (positions, calls) is in-memory; SQLite (`data/gm-medic.db`) stores
 admin accounts, the allow-list and bound tokens. `data/secret.key` is the JWT
