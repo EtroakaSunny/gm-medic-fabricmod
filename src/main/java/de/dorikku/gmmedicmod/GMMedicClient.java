@@ -108,12 +108,19 @@ public class GMMedicClient implements ClientModInitializer {
                 .then(ClientCommandManager.argument("serverUrl", StringArgumentType.greedyString()).executes(ctx -> {
                     String url = StringArgumentType.getString(ctx, "serverUrl");
                     ApiConfig.getInstance().setServerUrl(url);
-                    ctx.getSource().sendFeedback(
-                        Text.literal("[GM-Medic API] Server-URL gesetzt: " + url).formatted(Formatting.GREEN)
-                    );
-                    if (EmergencyCallManager.getInstance().isInDuty()) {
+                    if (ApiConfig.getInstance().isConfigured()) {
+                        ctx.getSource().sendFeedback(
+                            Text.literal("[GM-Medic API] Server-URL gesetzt: " + url).formatted(Formatting.GREEN)
+                        );
+                        if (EmergencyCallManager.getInstance().isInDuty()) {
+                            ApiConnection.getInstance().disconnect();
+                            ApiConnection.getInstance().connect();
+                        }
+                    } else {
                         ApiConnection.getInstance().disconnect();
-                        ApiConnection.getInstance().connect();
+                        ctx.getSource().sendFeedback(
+                            Text.literal("[GM-Medic API] Verbindung deaktiviert (serverUrl=" + url + ")").formatted(Formatting.YELLOW)
+                        );
                     }
                     return 1;
                 })))
