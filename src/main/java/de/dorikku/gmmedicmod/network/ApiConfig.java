@@ -7,9 +7,14 @@ import java.util.UUID;
 import net.fabricmc.loader.api.FabricLoader;
 
 public class ApiConfig {
+   /**
+    * Default GM-Medic API endpoint. Used until overridden via {@code /gmapi url}; an explicitly
+    * blank {@code serverUrl=} line in the config file disables connectivity entirely.
+    */
+   public static final String DEFAULT_SERVER_URL = "wss://medic.dorikku.de/api";
    private static ApiConfig INSTANCE;
    private boolean loaded = false;
-   private String serverUrl = "";
+   private String serverUrl = DEFAULT_SERVER_URL;
    private String authToken = "";
 
    private ApiConfig() {
@@ -62,7 +67,9 @@ public class ApiConfig {
       try {
          Path configPath = getConfigPath();
          Files.createDirectories(configPath.getParent());
-         String content = "# GM-Medic API Configuration\n# Leave serverUrl blank to disable WebSocket connectivity\nserverUrl="
+         String content = "# GM-Medic API Configuration\n# Default: "
+            + DEFAULT_SERVER_URL
+            + "\n# Leave serverUrl blank to disable WebSocket connectivity\nserverUrl="
             + this.serverUrl
             + "\nauthToken="
             + this.authToken
