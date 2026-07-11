@@ -244,20 +244,20 @@ function initMap() {
         });
 
         // BlueMap low-res PNGs stack a data map below the color map (500×1000
-        // px), so tiles are drawn onto a canvas cropped to the top (color) half.
+        // px). A full-width <img> inside an overflow-hidden tile shows only the
+        // top (color) square — no <canvas>, which browsers with strict
+        // fingerprinting protection (e.g. Brave Shields) may block or blank.
         const BlueMapTileLayer = L.GridLayer.extend({
             createTile(coords, done) {
-                const size = this.getTileSize();
-                const tile = document.createElement("canvas");
-                tile.width = size.x;
-                tile.height = size.y;
-                const img = new Image();
-                img.onload = () => {
-                    tile.getContext("2d").drawImage(img, 0, 0, img.width, img.width, 0, 0, size.x, size.y);
-                    done(null, tile);
-                };
-                img.onerror = () => done(null, tile); // unrendered tile — stays transparent
+                const tile = document.createElement("div");
+                tile.style.overflow = "hidden";
+                const img = document.createElement("img");
+                img.alt = "";
+                img.style.width = "100%";
+                img.onload = () => done(null, tile);
+                img.onerror = () => { img.remove(); done(null, tile); }; // unrendered tile — stays transparent
                 img.src = `${MAP_BASE}/tiles/${3 - coords.z}/x${coords.x}/z${coords.y}.png`;
+                tile.appendChild(img);
                 return tile;
             },
         });
