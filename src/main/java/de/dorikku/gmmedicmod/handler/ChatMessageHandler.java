@@ -29,8 +29,11 @@ public class ChatMessageHandler {
     private static final Pattern FUNK_SENDER_ANY     = Pattern.compile("[\\])]\\s+(.+?)\\s*»");
     // Public chat line: "...<PlayerName> » <message>". The player name is the word right before the ».
     private static final Pattern CHAT_SENDER_BODY    = Pattern.compile("(\\w{1,16})\\s*»\\s*(.+)$");
-    // Whole-word match so "low" does not fire on "below"/"yellow" and "heal" not on "health".
-    private static final Pattern HIGHLIGHT_KEYWORD   = Pattern.compile("(?i)\\b(?:heal|heilung|low)\\b");
+    // Whole-word match so "low" does not fire on "below"/"yellow", "heal" not on "health" and
+    // "leben" not on "überleben"/"erleben".
+    private static final Pattern HIGHLIGHT_KEYWORD   = Pattern.compile("(?i)\\b(?:heal|heilung|leben|low)\\b");
+    // "... legt <player> einen Verband an" — a medic treated the player, so the highlight can go.
+    private static final Pattern BANDAGE_TARGET      = Pattern.compile("legt\\s+(.+?)\\s+einen Verband an");
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
@@ -50,6 +53,7 @@ public class ChatMessageHandler {
         boolean isFunk = isFunkMessage(msg);
 
         checkKeywordHighlight(msg, isFunk);
+        checkBandageApplied(msg);
 
         if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
             manager.setInDuty(true);
@@ -217,7 +221,7 @@ public class ChatMessageHandler {
     }
 
     /**
-     * Highlights a player for 30s when they write "heal"/"heilung"/"low" in normal chat.
+     * Highlights a player for 30s when they write "heal"/"heilung"/"leben"/"low" in normal chat.
      * Emergency-call traffic (FUNK radio, ZENTRALE broadcasts and the data-transmission lines) can
      * contain these words too, so it is explicitly excluded — only genuine "&lt;name&gt; » message"
      * player chat counts.
@@ -237,6 +241,19 @@ public class ChatMessageHandler {
         if (sender == null) return;
         manager.addKeywordHighlight(sender);
         GMMedic.LOGGER.info("[GM-Medic] Heal/low keyword from {} — highlighting 30s", sender);
+    }
+
+    /**
+     * A medic applying a bandage ("… legt &lt;player&gt; einen Verband an") means the player has
+     * been treated — their keyword highlight is removed immediately.
+     */
+    private static void checkBandageApplied(String msg) {
+        Matcher m = BANDAGE_TARGET.matcher(msg);
+        if (!m.find()) return;
+        String target = EmergencyCallManager.normalizeCallerName(m.group(1));
+        if (target == null) return;
+        manager.removeKeywordHighlight(target);
+        GMMedic.LOGGER.info("[GM-Medic] Bandage applied to {} — keyword highlight removed", target);
     }
 
     private static boolean isFunkMessage(String msg) {
