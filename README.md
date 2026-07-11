@@ -72,6 +72,8 @@ Two ways to get approved; both require the first frame to be
 - After `AUTH_OK` the server immediately sends `OPEN_CALLS` with every
   unresolved call, so a newly connected client starts with the full picture.
 - `DUTY_ON` re-sends `OPEN_CALLS` (calls may have arrived while off duty).
+- Only **on-duty** medics are position-tracked: `LOCATION_UPDATE` from an
+  off-duty client is ignored, and `DUTY_OFF` drops the stored position.
 - Every call mutation reported by one client (`CALL_NEW`, `CALL_ASSIGNED`,
   `CALL_RESOLVED`, `CALL_REJECTED`) is fanned out to all other connected mod
   clients as `CALL_SYNC`, and to admin GUIs as `call_update`.

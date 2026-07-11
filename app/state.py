@@ -64,16 +64,27 @@ class LiveState:
             username, {"x": None, "y": None, "z": None, "on_duty": False, "last_seen": _now_ms()}
         )
         info["on_duty"] = on_duty
+        if not on_duty:
+            # Off duty means no position tracking — drop the last known location.
+            info["x"] = info["y"] = info["z"] = None
         info["last_seen"] = _now_ms()
 
-    def set_location(self, username: str, x, y, z) -> None:
+    def set_location(self, username: str, x, y, z) -> bool:
+        """Store a position update; returns False (ignored) for off-duty medics.
+
+        Only on-duty medics are tracked. The current mod already sends locations
+        on duty only; this also drops updates from older mod versions.
+        """
         info = self.online.setdefault(
             username, {"x": None, "y": None, "z": None, "on_duty": False, "last_seen": _now_ms()}
         )
+        info["last_seen"] = _now_ms()
+        if not info["on_duty"]:
+            return False
         info["x"] = safe_float(x)
         info["y"] = safe_float(y)
         info["z"] = safe_float(z)
-        info["last_seen"] = _now_ms()
+        return True
 
     def upsert_call(self, call: dict) -> dict:
         call_id = call.get("callId")

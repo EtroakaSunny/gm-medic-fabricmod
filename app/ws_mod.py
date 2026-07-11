@@ -143,8 +143,8 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             await _send(ws, _alarm_sync(alarm))
 
     elif mtype == "LOCATION_UPDATE":
-        state.set_location(username, msg.get("x"), msg.get("y"), msg.get("z"))
-        await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
+        if state.set_location(username, msg.get("x"), msg.get("y"), msg.get("z")):
+            await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
 
     elif mtype == "ALARM_TRIGGERED":
         name = (msg.get("alarmName") or "").strip() or "Unbekannt"
