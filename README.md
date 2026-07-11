@@ -38,8 +38,9 @@ you can focus on the response.
   server to sync duty state, calls (new / assigned / resolved / rejected), periodic
   location updates and keep-alive, and to receive nearest-medic / open-call data.
   Token-authenticated. Connects to `wss://medic.dorikku.de/api` by default; use
-  `/gmapi url <serverUrl>` to point it elsewhere, or set `serverUrl=` (blank) in
-  `config/gm-medic-api.cfg` to disable it.
+  `/gmapi url <serverUrl>` to point it elsewhere, or `/gmapi url off` to disable it.
+  A blank `serverUrl` in `config/gm-medic-api.cfg` (as written by older versions) is
+  migrated to the default on startup.
 
 ---
 
@@ -78,7 +79,7 @@ you can focus on the response.
 | `/gmapi status` | Show connection state and configured server URL. |
 | `/gmapi token` | Show your authentication token. |
 | `/gmapi reset-token` | Generate a new token (reconnect required). |
-| `/gmapi url <serverUrl>` | Set the API server URL (default: `wss://medic.dorikku.de/api`). |
+| `/gmapi url <serverUrl>` | Set the API server URL (default: `wss://medic.dorikku.de/api`); `off` disables. |
 
 ---
 
