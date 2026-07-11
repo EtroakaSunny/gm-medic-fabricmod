@@ -77,6 +77,13 @@ public class EmergencyCallManager {
         keywordHighlights.put(key, System.currentTimeMillis() + KEYWORD_HIGHLIGHT_MS);
     }
 
+    /** Clears a player's keyword highlight, e.g. once a medic has applied a bandage to them. */
+    public void removeKeywordHighlight(String playerName) {
+        String key = callerKey(playerName);
+        if (key == null) return;
+        keywordHighlights.remove(key);
+    }
+
     /** Normalized lowercase keys of players whose keyword highlight is still active (expired ones pruned). */
     public Set<String> getKeywordHighlightTargets() {
         long now = System.currentTimeMillis();
