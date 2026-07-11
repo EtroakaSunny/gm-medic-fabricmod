@@ -23,10 +23,13 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
+
+import java.util.Locale;
 
 public class GMMedicClient implements ClientModInitializer {
 
@@ -48,9 +51,21 @@ public class GMMedicClient implements ClientModInitializer {
 
         WorldRenderEvents.AFTER_ENTITIES.register(CallTargetHighlightRenderer::render);
 
+        // Connect to the API as soon as a GermanMiner server is joined (not just on duty),
+        // so the client is online for the whole session.
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            ServerInfo server = client.getCurrentServerEntry();
+            String address = server != null ? server.address : null;
+            if (address != null && address.toLowerCase(Locale.ROOT).contains("germanminer.de")) {
+                GMMedic.LOGGER.info("[GM-Medic] GermanMiner server joined ({}) — connecting to API", address);
+                ApiConnection.getInstance().connect();
+            }
+        });
+
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
-            GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset");
+            ApiConnection.getInstance().disconnect();
+            GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
         });
 
         if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
@@ -112,7 +127,7 @@ public class GMMedicClient implements ClientModInitializer {
                         ctx.getSource().sendFeedback(
                             Text.literal("[GM-Medic API] Server-URL gesetzt: " + url).formatted(Formatting.GREEN)
                         );
-                        if (EmergencyCallManager.getInstance().isInDuty()) {
+                        if (ApiConnection.getInstance().isConnected()) {
                             ApiConnection.getInstance().disconnect();
                             ApiConnection.getInstance().connect();
                         }
