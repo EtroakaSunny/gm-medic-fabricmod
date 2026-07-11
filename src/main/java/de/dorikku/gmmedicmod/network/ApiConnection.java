@@ -127,6 +127,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         if (EmergencyCallManager.getInstance().isInDuty()) {
             String username = MinecraftClient.getInstance().getSession().getUsername();
             sendRaw(OutboundMessages.dutyOn(username));
+            startLocationTask();
         }
 
         pingTask = scheduler.scheduleAtFixedRate(() -> {
@@ -138,7 +139,15 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
                 onWebSocketError();
             }
         }, 30, 30, TimeUnit.SECONDS);
+    }
 
+    /**
+     * Position tracking is duty-only: the task exists solely while on duty
+     * (started on duty-on / after re-auth, cancelled on duty-off), so an
+     * off-duty client sends no location data at all.
+     */
+    private void startLocationTask() {
+        if (locationTask != null) return;
         locationTask = scheduler.scheduleAtFixedRate(() -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player == null) return;
@@ -150,9 +159,13 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         }, 2, 2, TimeUnit.SECONDS);
     }
 
+    private void stopLocationTask() {
+        if (locationTask != null) { locationTask.cancel(false); locationTask = null; }
+    }
+
     private void cancelPeriodicTasks() {
         if (pingTask != null) { pingTask.cancel(false); pingTask = null; }
-        if (locationTask != null) { locationTask.cancel(false); locationTask = null; }
+        stopLocationTask();
     }
 
     // --- Package-visible for InboundDispatcher ---
@@ -176,14 +189,17 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         if (inDuty) {
             if (authenticated) {
                 send(OutboundMessages.dutyOn(username));
+                startLocationTask();
             } else {
                 // Not connected yet (e.g. dropped connection) — connecting will announce
                 // the duty state after AUTH_OK via startPeriodicTasks().
                 connect();
             }
         } else {
-            // Stay connected: the client remains online for the whole game session.
+            // Stay connected: the client remains online for the whole game session,
+            // but position tracking ends with the duty.
             send(OutboundMessages.dutyOff(username));
+            stopLocationTask();
         }
     }
 
