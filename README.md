@@ -23,6 +23,9 @@ you can focus on the response.
 - **Call-target highlighting** — draws an outline box around every player who has an
   open call so you can spot them in the world. Active only while on duty, within a
   configurable range, colour-coded by call type (death = red, emergency = orange).
+- **Keyword highlighting** — also highlights (for 30 s) any player who writes
+  `heal`, `heilung`, `leben` or `low` in public chat. The highlight is removed as soon
+  as a medic bandages them (`… legt <player> einen Verband an`).
 - **Vehicle automation** — when you enter an EMS vehicle the mod can:
   - **Motor** — run `/vehicles motor` automatically on entry.
   - **Gear** — drop the gear item the server hands you, to set the gear shift.
