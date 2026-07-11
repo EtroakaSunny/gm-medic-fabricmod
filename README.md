@@ -37,6 +37,9 @@ you can focus on the response.
 - **Server API sync (optional)** — connects over WebSocket to an external GM-Medic
   server to sync duty state, calls (new / assigned / resolved / rejected), periodic
   location updates and keep-alive, and to receive nearest-medic / open-call data.
+  The connection opens automatically when you join a GermanMiner server (address
+  containing `germanminer.de`) and stays up for the whole game session, on and off
+  duty.
   Token-authenticated. Connects to `wss://medic.dorikku.de/api` by default; use
   `/gmapi url <serverUrl>` to point it elsewhere, or `/gmapi url off` to disable it.
   A blank `serverUrl` in `config/gm-medic-api.cfg` (as written by older versions) is

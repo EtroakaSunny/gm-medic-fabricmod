@@ -57,7 +57,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         webSocket = null;
         if (ws != null) {
             try {
-                ws.sendClose(WebSocket.NORMAL_CLOSURE, "duty off").join();
+                ws.sendClose(WebSocket.NORMAL_CLOSURE, "client disconnect").join();
             } catch (Exception ignored) {}
         }
         GMMedic.LOGGER.info("[ApiConnection] Disconnected");
@@ -68,7 +68,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
     }
 
     private void doConnect() {
-        if (!wantConnected) return;
+        if (!wantConnected || webSocket != null) return;
         String url = ApiConfig.getInstance().getServerUrl();
         try {
             URI uri = URI.create(url);
@@ -122,8 +122,12 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
     void startPeriodicTasks() {
         cancelPeriodicTasks();
         lastPongMs = System.currentTimeMillis();
-        String username = MinecraftClient.getInstance().getSession().getUsername();
-        sendRaw(OutboundMessages.dutyOn(username));
+        // The connection now outlives duty: only announce DUTY_ON when actually on duty
+        // (e.g. re-auth after a reconnect); otherwise the client is just online.
+        if (EmergencyCallManager.getInstance().isInDuty()) {
+            String username = MinecraftClient.getInstance().getSession().getUsername();
+            sendRaw(OutboundMessages.dutyOn(username));
+        }
 
         pingTask = scheduler.scheduleAtFixedRate(() -> {
             send(OutboundMessages.ping());
@@ -168,13 +172,18 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
 
     @Override
     public void onDutyChanged(boolean inDuty) {
+        String username = MinecraftClient.getInstance().getSession().getUsername();
         if (inDuty) {
-            connect();
+            if (authenticated) {
+                send(OutboundMessages.dutyOn(username));
+            } else {
+                // Not connected yet (e.g. dropped connection) — connecting will announce
+                // the duty state after AUTH_OK via startPeriodicTasks().
+                connect();
+            }
         } else {
-            MinecraftClient client = MinecraftClient.getInstance();
-            String username = client.getSession().getUsername();
+            // Stay connected: the client remains online for the whole game session.
             send(OutboundMessages.dutyOff(username));
-            disconnect();
         }
     }
 
