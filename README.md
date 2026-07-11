@@ -18,23 +18,15 @@ Or as a container (image `localhost/gm-medic-server`).
 
 ## Deployment
 
-Deployed as the `gm-medic` service of the **New-GM-API-Burner** compose stack
-(`~/Documents/GM-API-Burner/New-GM-API-Burner`), tunnel profile:
-
-```bash
-cd ~/Documents/GM-API-Burner/New-GM-API-Burner
-./setup.sh --tunnel                                  # first run
-docker compose --profile tunnel up -d --build gm-medic   # redeploy after changes here
-```
-
-The burner's `.env` points `GM_MEDIC_SERVER_DIR` at this directory (build
-context) and can set `GM_MEDIC_ADMIN_PASSWORD` for the admin GUI. State
-lives in the named volume `gm_medic_data` (mounted at `/app/data`).
-
-Public ingress is a second hostname on the stack's named Cloudflare tunnel:
-`medic.dorikku.de` → `http://gm-medic:8765`, configured in the Cloudflare
-Zero Trust dashboard (TLS terminates at Cloudflare, so the mod's default
-`wss://medic.dorikku.de/api` works unchanged).
+Runs as its own compose stack (this branch: `docker compose up -d --build`)
+next to **New-GM-API-Burner** on the same host, sharing the burner's named
+Cloudflare tunnel: the `docker-compose.burner.yml` overlay joins the app to
+the burner's compose network (alias `gm-medic`), and a second public hostname
+on the tunnel routes `medic.dorikku.de` → `http://gm-medic:8765` (configured
+in the Cloudflare Zero Trust dashboard; TLS terminates at Cloudflare, so the
+mod's default `wss://medic.dorikku.de/api` works unchanged). State lives in
+the named volume `gm_medic_data` (mounted at `/app/data`). See DEPLOYMENT.md
+for the full walkthrough and the standalone (own Caddy) alternative.
 
 ### Environment variables
 

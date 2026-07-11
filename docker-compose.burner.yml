@@ -1,9 +1,14 @@
-# Overlay for running next to New-GM-API-Burner on the same host.
+# Overlay for running next to New-GM-API-Burner on the same host, sharing its
+# ingress. The bundled caddy service stays off (COMPOSE_PROFILES=) and the app
+# joins the burner's compose network instead, reachable there as "gm-medic".
 #
-# The burner's Caddy already owns ports 80/443, so the bundled caddy service
-# stays off (COMPOSE_PROFILES=) and the app joins the burner's compose network
-# instead, reachable there as "gm-medic". The burner's Caddyfile then proxies
-# medic.dorikku.de to gm-medic:8765.
+# Routing, depending on the burner's mode:
+#   - tunnel (cloudflared): add a public hostname to the named tunnel in the
+#     Cloudflare Zero Trust dashboard:
+#       medic.dorikku.de -> http://gm-medic:8765
+#     (this also creates the DNS record; Cloudflare terminates TLS)
+#   - production (Caddy on 80/443): add to the burner's Caddyfile:
+#       medic.dorikku.de { reverse_proxy gm-medic:8765 }
 #
 # Enable by setting in .env:
 #   COMPOSE_PROFILES=
