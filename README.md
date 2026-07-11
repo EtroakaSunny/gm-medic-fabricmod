@@ -34,9 +34,16 @@ you can focus on the response.
     sneak out (configurable delay). Helicopters are detected and skipped.
 
   Each feature can be toggled, and set to run **always** (even off duty).
+- **Bank alarm broadcast** — when the D-Funk (Ⓓ channel) reports
+  `Der Alarm der <Bank> wurde ausgelöst`, the alarm is sent to the API server, which
+  pushes it to every connected client that is **not on duty**. Those clients get a
+  hard-to-miss alert: a title, the raid-horn sound, a chat line and a flashing
+  full-width banner that stays until the D-Funk reports
+  `Der Bankraub wurde beendet.` (30-minute safety timeout if that line is missed).
 - **Server API sync (optional)** — connects over WebSocket to an external GM-Medic
   server to sync duty state, calls (new / assigned / resolved / rejected), periodic
-  location updates and keep-alive, and to receive nearest-medic / open-call data.
+  location updates (sent while on duty only) and keep-alive, and to receive
+  nearest-medic / open-call data.
   The connection opens automatically when you join a GermanMiner server (address
   containing `germanminer.de`) and stays up for the whole game session, on and off
   duty.
@@ -112,4 +119,6 @@ you can focus on the response.
 | `/gm testfunk` | Simulate a sequence of `[FUNK]` messages. |
 | `/gm testfull` | Full GermanMiner simulation (`[FUNK]` format). |
 | `/gm testrealformat` | Full simulation using the real GermanMiner radio format. |
+| `/gm testalarm [bank]` | Simulate the D-Funk bank-alarm line. |
+| `/gm testalarmend` | Simulate the D-Funk "Bankraub beendet" line. |
 | `/gm help` | List all debug commands in chat. |

@@ -140,6 +140,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         }, 30, 30, TimeUnit.SECONDS);
 
         locationTask = scheduler.scheduleAtFixedRate(() -> {
+            if (!EmergencyCallManager.getInstance().isInDuty()) return;
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player == null) return;
             String locationUsername = client.getSession().getUsername();

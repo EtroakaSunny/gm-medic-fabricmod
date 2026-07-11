@@ -7,7 +7,9 @@ import de.dorikku.gmmedicmod.command.HudCommands;
 import de.dorikku.gmmedicmod.command.VehicleCommands;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
+import de.dorikku.gmmedicmod.hud.AlarmHud;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
+import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.network.ApiConfig;
 import de.dorikku.gmmedicmod.network.ApiConnection;
@@ -49,6 +51,11 @@ public class GMMedicClient implements ClientModInitializer {
                 EmergencyCallHud::render
         );
 
+        HudElementRegistry.addLast(
+                Identifier.of(GMMedic.MOD_ID, "alarm_hud"),
+                AlarmHud::render
+        );
+
         WorldRenderEvents.AFTER_ENTITIES.register(CallTargetHighlightRenderer::render);
 
         // Connect to the API as soon as a GermanMiner server is joined (not just on duty),
@@ -64,6 +71,7 @@ public class GMMedicClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
+            AlarmManager.getInstance().clear();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
         });

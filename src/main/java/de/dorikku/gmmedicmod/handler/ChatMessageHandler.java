@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
@@ -34,6 +35,9 @@ public class ChatMessageHandler {
     private static final Pattern HIGHLIGHT_KEYWORD   = Pattern.compile("(?i)\\b(?:heal|heilung|leben|low)\\b");
     // "... legt <player> einen Verband an" — a medic treated the player, so the highlight can go.
     private static final Pattern BANDAGE_TARGET      = Pattern.compile("legt\\s+(.+?)\\s+einen Verband an");
+    // Bank alarm, only trusted from the D-Funk: "Der Alarm der <Bank> wurde ausgelöst"
+    private static final Pattern DFUNK_ALARM_START   = Pattern.compile("Der Alarm der (.+?) wurde ausgelöst");
+    private static final String  DFUNK_ALARM_END     = "Der Bankraub wurde beendet";
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
@@ -82,6 +86,23 @@ public class ChatMessageHandler {
                     GMMedic.LOGGER.info("[GM-Medic] Off duty (FUNK leave)");
                     return;
                 }
+            }
+        }
+
+        // Bank alarm — evaluated before the duty gate so the state also updates for
+        // off-duty players in case the D-Funk is visible to them.
+        if (isDFunkMessage(msg)) {
+            Matcher alarm = DFUNK_ALARM_START.matcher(msg);
+            if (alarm.find()) {
+                String alarmName = alarm.group(1).trim();
+                AlarmManager.getInstance().triggerFromChat(alarmName);
+                GMMedic.LOGGER.info("[GM-Medic] D-Funk alarm triggered: {}", alarmName);
+                return;
+            }
+            if (msg.contains(DFUNK_ALARM_END)) {
+                AlarmManager.getInstance().endFromChat();
+                GMMedic.LOGGER.info("[GM-Medic] D-Funk alarm ended (Bankraub beendet)");
+                return;
             }
         }
 
@@ -258,6 +279,15 @@ public class ChatMessageHandler {
 
     private static boolean isFunkMessage(String msg) {
         return msg.contains("[FUNK]");
+    }
+
+    /**
+     * D-Funk lines carry the Ⓓ channel marker (the real server prefixes funk lines
+     * with a circled channel letter, e.g. Ⓛ for the medic funk). "[D-FUNK]" is
+     * accepted as legacy/simulation format.
+     */
+    private static boolean isDFunkMessage(String msg) {
+        return msg.contains("Ⓓ") || msg.contains("[D-FUNK]");
     }
 
     private static String extractFunkSender(String msg) {
