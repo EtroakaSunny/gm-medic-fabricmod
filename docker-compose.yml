@@ -1,0 +1,56 @@
+services:
+  # GM-Medic API server (FastAPI/uvicorn)
+  app:
+    build:
+      context: .
+      dockerfile: Containerfile
+    environment:
+      - GM_ADMIN_USER=${GM_ADMIN_USER:-admin}
+      - GM_ADMIN_PASSWORD=${GM_ADMIN_PASSWORD:?set GM_ADMIN_PASSWORD in .env}
+      - GM_ROSTER_URL=${GM_ROSTER_URL:-https://acp.germanminer.de/public/fraction/medic}
+      - GM_ROSTER_CACHE_SECONDS=${GM_ROSTER_CACHE_SECONDS:-60}
+    expose:
+      - "8765"
+    volumes:
+      - gm_medic_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8765/', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # Caddy reverse proxy: automatic HTTPS for $DOMAIN, proxies everything
+  # (mod WebSocket /api, admin GUI, admin REST) to the app.
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+volumes:
+  gm_medic_data:
+  caddy_data:
+  caddy_config:

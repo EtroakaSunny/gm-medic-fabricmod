@@ -1,0 +1,131 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #14171c;
+    --panel: #1d2128;
+    --panel-2: #262b34;
+    --text: #e6e8ec;
+    --muted: #8b93a1;
+    --accent: #46c46b;
+    --danger: #e5534b;
+    --ecall: #e6943c;
+    --death: #e5534b;
+    --border: #2e343f;
+}
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* --- Login --- */
+.login-view {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-box {
+    background: var(--panel);
+    padding: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.4);
+}
+.login-box h1 { text-align: center; font-size: 28px; }
+.subtitle { text-align: center; color: var(--muted); margin-top: -8px; font-size: 14px; }
+.login-box input, .add-form input {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 11px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+.login-box input:focus, .add-form input:focus { outline: 1px solid var(--accent); }
+button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.error { color: var(--danger); font-size: 13px; text-align: center; min-height: 16px; }
+
+/* --- Dashboard --- */
+.dash-view { height: 100vh; display: flex; flex-direction: column; }
+.topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; font-size: 17px; }
+.conn-status { color: var(--muted); font-size: 13px; margin-left: auto; }
+.conn-status.ok { color: var(--accent); }
+.conn-status.bad { color: var(--danger); }
+
+.grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 14px;
+    padding: 14px;
+    min-height: 0;
+}
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 10px; }
+
+.list { list-style: none; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.list li {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+}
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.name { font-weight: 600; }
+.meta { color: var(--muted); font-size: 12px; }
+.badge { font-size: 11px; padding: 2px 7px; border-radius: 20px; font-weight: 600; }
+.badge.duty { background: rgba(70,196,107,.18); color: var(--accent); }
+.badge.off { background: rgba(139,147,161,.18); color: var(--muted); }
+.badge.ecall { background: rgba(230,148,60,.18); color: var(--ecall); }
+.badge.death { background: rgba(229,83,75,.18); color: var(--death); }
+.badge.resolved { background: rgba(139,147,161,.18); color: var(--muted); }
+.del { background: transparent; color: var(--muted); border: none; padding: 2px 6px; cursor: pointer; font-size: 16px; }
+.del:hover { color: var(--danger); }
+
+.add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+.map-panel { min-height: 0; }
+#map { flex: 1; width: 100%; background: #0e1014; border-radius: 8px; border: 1px solid var(--border); }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: middle; }
+.legend .dot { border-radius: 50%; }
+.legend .dot.duty { background: var(--accent); }
+.legend .dot.off { background: var(--muted); }
+.legend .sq.ecall { background: var(--ecall); }
+.legend .sq.death { background: var(--death); }

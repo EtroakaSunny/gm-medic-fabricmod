@@ -1,0 +1,19 @@
+{$DOMAIN} {
+    encode gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Everything — mod WebSocket (/api, /ws), admin WebSocket (/ws/admin),
+    # admin REST (/api/...) and the static admin GUI — is served by the app.
+    # Caddy proxies WebSocket upgrades transparently.
+    reverse_proxy app:8765
+
+    log {
+        output file /data/access.log
+        format console
+    }
+}

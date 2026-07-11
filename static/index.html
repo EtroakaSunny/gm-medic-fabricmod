@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GM-Medic Leitstelle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login -->
+    <div id="login-view" class="login-view">
+        <form id="login-form" class="login-box">
+            <h1>GM-Medic</h1>
+            <p class="subtitle">Leitstelle — Anmeldung</p>
+            <input id="login-user" type="text" placeholder="Benutzername" autocomplete="username" required>
+            <input id="login-pass" type="password" placeholder="Passwort" autocomplete="current-password" required>
+            <button type="submit">Anmelden</button>
+            <p id="login-error" class="error"></p>
+        </form>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dash-view" class="dash-view hidden">
+        <header class="topbar">
+            <span class="brand">GM-Medic Leitstelle</span>
+            <span id="conn-status" class="conn-status">verbinde…</span>
+            <button id="logout-btn" class="ghost">Abmelden</button>
+        </header>
+
+        <main class="grid">
+            <section class="panel">
+                <h2>Sanitäter</h2>
+                <ul id="medic-list" class="list"></ul>
+                <form id="add-medic-form" class="add-form">
+                    <input id="add-medic-user" type="text" placeholder="Minecraft-Name" required>
+                    <input id="add-medic-display" type="text" placeholder="Anzeigename (optional)">
+                    <button type="submit">+ Hinzufügen</button>
+                </form>
+            </section>
+
+            <section class="panel map-panel">
+                <h2>Live-Karte</h2>
+                <canvas id="map"></canvas>
+                <div class="legend">
+                    <span><i class="dot duty"></i> im Dienst</span>
+                    <span><i class="dot off"></i> außer Dienst</span>
+                    <span><i class="sq ecall"></i> E-Call</span>
+                    <span><i class="sq death"></i> Tod</span>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Aktive Einsätze</h2>
+                <ul id="call-list" class="list"></ul>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
