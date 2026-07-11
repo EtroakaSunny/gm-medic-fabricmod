@@ -102,14 +102,15 @@ public final class InboundDispatcher {
         JsonArray calls = obj.getAsJsonArray("calls");
         int count = 0;
         for (JsonElement el : calls) {
-            if (el.isJsonObject()) { applyRemoteCall(el.getAsJsonObject()); count++; }
+            // Bulk sync on duty start — never announce, these assignments may be old news.
+            if (el.isJsonObject()) { applyRemoteCall(el.getAsJsonObject(), false); count++; }
         }
         GMMedic.LOGGER.info("[ApiConnection] Synced {} open call(s) on duty start", count);
     }
 
     private static void handleCallSync(JsonObject obj) {
         if (obj.has("call") && obj.get("call").isJsonObject()) {
-            applyRemoteCall(obj.getAsJsonObject("call"));
+            applyRemoteCall(obj.getAsJsonObject("call"), true);
         }
     }
 
@@ -118,11 +119,16 @@ public final class InboundDispatcher {
         if (callId != null) EmergencyCallManager.getInstance().removeByCallId(callId);
     }
 
-    private static void applyRemoteCall(JsonObject c) {
+    private static void applyRemoteCall(JsonObject c, boolean announceTransitions) {
         String callId = optString(c, "callId");
         if (callId == null) return;
+        EmergencyCallManager manager = EmergencyCallManager.getInstance();
+        EmergencyCall existing = manager.findByCallId(callId);
+        String previousAssignedMedic = existing != null ? existing.getAssignedMedic() : null;
+
         CallType type = "DEATH".equals(optString(c, "callType")) ? CallType.DEATH : CallType.ECALL;
-        EmergencyCallManager.getInstance().upsertRemoteCall(
+        String assignedMedic = optString(c, "assignedMedic");
+        EmergencyCall call = manager.upsertRemoteCall(
                 callId,
                 type,
                 optString(c, "callerName"),
@@ -132,12 +138,32 @@ public final class InboundDispatcher {
                 optDouble(c, "z"),
                 optString(c, "locationName"),
                 c.has("deadlineMs") && !c.get("deadlineMs").isJsonNull() ? c.get("deadlineMs").getAsLong() : -1L,
-                optString(c, "assignedMedic"),
+                assignedMedic,
                 optString(c, "suggestedMedic"),
                 c.has("resolved") && !c.get("resolved").isJsonNull() && c.get("resolved").getAsBoolean(),
                 optString(c, "resolveReason"),
                 optString(c, "rejectedBy")
         );
+
+        double nearbyDistance = optDouble(c, "assignedMedicNearbyDistance");
+        if (announceTransitions && assignedMedic != null && !assignedMedic.equals(previousAssignedMedic)
+                && !Double.isNaN(nearbyDistance)) {
+            announceMedicNearby(call, assignedMedic, nearbyDistance);
+        }
+    }
+
+    /**
+     * The server only sends {@code assignedMedicNearbyDistance} when the newly assigned medic's
+     * last known position was within its nearby threshold, so any value here is worth announcing.
+     */
+    private static void announceMedicNearby(EmergencyCall call, String medicName, double distanceBlocks) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+        String caller = call.getCallerName();
+        String text = "[GM-Medic] " + medicName + " ist bereits in der Nähe"
+                + (caller != null ? " von " + caller : "")
+                + " (" + Math.round(distanceBlocks) + "m) und dürfte gleich ankommen.";
+        client.player.sendMessage(Text.literal(text).formatted(Formatting.AQUA), false);
     }
 
     private static String optString(JsonObject obj, String key) {
