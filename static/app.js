@@ -223,51 +223,63 @@ const MAP_ID = "world";
 const MAP_BASE = `map/maps/${MAP_ID}`;
 const BLUEMAP_PUBLIC = "http://map.germanminer.de:2086";
 
-const BlueMapCRS = L.extend({}, L.CRS.Simple, {
-    scale: (zoom) => Math.pow(5, zoom) / 25,
-    zoom: (scale) => Math.log(25 * scale) / Math.log(5),
-});
-
-// BlueMap low-res PNGs stack a data map below the color map (500×1000 px),
-// so tiles are drawn onto a canvas cropped to the top (color) half.
-const BlueMapTileLayer = L.GridLayer.extend({
-    createTile(coords, done) {
-        const size = this.getTileSize();
-        const tile = document.createElement("canvas");
-        tile.width = size.x;
-        tile.height = size.y;
-        const img = new Image();
-        img.onload = () => {
-            tile.getContext("2d").drawImage(img, 0, 0, img.width, img.width, 0, 0, size.x, size.y);
-            done(null, tile);
-        };
-        img.onerror = () => done(null, tile); // unrendered tile — stays transparent
-        img.src = `${MAP_BASE}/tiles/${3 - coords.z}/x${coords.x}/z${coords.y}.png`;
-        return tile;
-    },
-});
-
 let map = null;
 let mapFitted = false;
 const medicMarkers = new Map(); // username -> L.CircleMarker
 const callMarkers = new Map();  // callId -> L.Marker
 
+// The map is optional: if it cannot start (e.g. Leaflet missing because a
+// stale cached page is in play), the dashboard must still work — never throw.
 function initMap() {
     if (map) return;
-    map = L.map("map", {
-        crs: BlueMapCRS,
-        minZoom: 0,
-        maxZoom: 3,          // zoom 3 upscales LOD-1 tiles 5× for close-ups
-        zoomSnap: 1,
-        attributionControl: false,
-    });
-    new BlueMapTileLayer({
-        tileSize: 500,
-        minNativeZoom: 0,
-        maxNativeZoom: 2,
-    }).addTo(map);
-    map.setView([0, 0], 1);
-    document.getElementById("map-fit").addEventListener("click", () => fitMapToMarkers(true));
+    if (typeof L === "undefined") {
+        document.getElementById("map").textContent =
+            "Karte konnte nicht geladen werden — bitte Seite neu laden (Strg+F5).";
+        return;
+    }
+    try {
+        const crs = L.extend({}, L.CRS.Simple, {
+            scale: (zoom) => Math.pow(5, zoom) / 25,
+            zoom: (scale) => Math.log(25 * scale) / Math.log(5),
+        });
+
+        // BlueMap low-res PNGs stack a data map below the color map (500×1000
+        // px), so tiles are drawn onto a canvas cropped to the top (color) half.
+        const BlueMapTileLayer = L.GridLayer.extend({
+            createTile(coords, done) {
+                const size = this.getTileSize();
+                const tile = document.createElement("canvas");
+                tile.width = size.x;
+                tile.height = size.y;
+                const img = new Image();
+                img.onload = () => {
+                    tile.getContext("2d").drawImage(img, 0, 0, img.width, img.width, 0, 0, size.x, size.y);
+                    done(null, tile);
+                };
+                img.onerror = () => done(null, tile); // unrendered tile — stays transparent
+                img.src = `${MAP_BASE}/tiles/${3 - coords.z}/x${coords.x}/z${coords.y}.png`;
+                return tile;
+            },
+        });
+
+        map = L.map("map", {
+            crs,
+            minZoom: 0,
+            maxZoom: 3,          // zoom 3 upscales LOD-1 tiles 5× for close-ups
+            zoomSnap: 1,
+            attributionControl: false,
+        });
+        new BlueMapTileLayer({
+            tileSize: 500,
+            minNativeZoom: 0,
+            maxNativeZoom: 2,
+        }).addTo(map);
+        map.setView([0, 0], 1);
+        document.getElementById("map-fit").addEventListener("click", () => fitMapToMarkers(true));
+    } catch (e) {
+        console.error("Karte konnte nicht initialisiert werden:", e);
+        map = null;
+    }
 }
 
 function blockLatLng(x, z) { return [-z, x]; }

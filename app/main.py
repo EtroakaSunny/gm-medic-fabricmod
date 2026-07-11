@@ -56,6 +56,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GM-Medic Server", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def gui_cache_control(request, call_next):
+    """GUI assets must revalidate (cheap ETag 304s) instead of being cached —
+    Cloudflare's default 4 h edge/browser TTL for js/css otherwise leaves
+    clients running a stale app.js against a new index.html after a deploy."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 # REST + WebSocket routes are registered before the static mount so they win.
 app.include_router(api_router)
 app.include_router(mod_ws_router)
