@@ -40,7 +40,10 @@ you can focus on the response.
   Token-authenticated. Connects to `wss://medic.dorikku.de/api` by default; use
   `/gmapi url <serverUrl>` to point it elsewhere, or `/gmapi url off` to disable it.
   A blank `serverUrl` in `config/gm-medic-api.cfg` (as written by older versions) is
-  migrated to the default on startup.
+  migrated to the default on startup. Players listed on the [public GermanMiner
+  medic-fraction roster](https://acp.germanminer.de/public/fraction/medic) are
+  approved by the server automatically for the duration of their connection — no
+  manual allow-listing needed.
 
 ---
 
