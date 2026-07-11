@@ -37,7 +37,9 @@ you can focus on the response.
 - **Server API sync (optional)** — connects over WebSocket to an external GM-Medic
   server to sync duty state, calls (new / assigned / resolved / rejected), periodic
   location updates and keep-alive, and to receive nearest-medic / open-call data.
-  Token-authenticated.
+  Token-authenticated. Connects to `wss://medic.dorikku.de/api` by default; use
+  `/gmapi url <serverUrl>` to point it elsewhere, or set `serverUrl=` (blank) in
+  `config/gm-medic-api.cfg` to disable it.
 
 ---
 
@@ -76,7 +78,7 @@ you can focus on the response.
 | `/gmapi status` | Show connection state and configured server URL. |
 | `/gmapi token` | Show your authentication token. |
 | `/gmapi reset-token` | Generate a new token (reconnect required). |
-| `/gmapi url <serverUrl>` | Set the API server URL (e.g. `ws://host:port/...`). |
+| `/gmapi url <serverUrl>` | Set the API server URL (default: `wss://medic.dorikku.de/api`). |
 
 ---
 
