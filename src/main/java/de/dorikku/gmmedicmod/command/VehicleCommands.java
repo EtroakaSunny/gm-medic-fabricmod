@@ -108,8 +108,10 @@ public class VehicleCommands {
                   return 1;
                })))
             .then(((LiteralArgumentBuilder)ClientCommandManager.literal("always").then(ClientCommandManager.literal("on").executes(ctx -> {
+               // "always on" must leave the feature usable — enable it too, or the flag is dead config.
+               setEnabled.accept(VehicleConfig.getInstance(), true);
                setAlways.accept(VehicleConfig.getInstance(), true);
-               ((FabricClientCommandSource)ctx.getSource()).sendFeedback(Text.literal("§a§l " + label + ": §rauch außer Dienst aktiv"));
+               ((FabricClientCommandSource)ctx.getSource()).sendFeedback(Text.literal("§a§l " + label + ": §raktiviert, auch außer Dienst aktiv"));
                return 1;
             }))).then(ClientCommandManager.literal("off").executes(ctx -> {
                setAlways.accept(VehicleConfig.getInstance(), false);
