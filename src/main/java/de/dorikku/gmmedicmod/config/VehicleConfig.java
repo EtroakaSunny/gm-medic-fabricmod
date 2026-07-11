@@ -16,7 +16,7 @@ public class VehicleConfig {
    private boolean gearAlways = false;
    private boolean sirenEnabled = true;
    private boolean sirenAlways = false;
-   private int exitDelayTicks = 20;
+   private int exitDelayTicks = 1;
 
    private VehicleConfig() {
    }

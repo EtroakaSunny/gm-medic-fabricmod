@@ -42,6 +42,7 @@ public final class VehicleAutomation {
     private static final long GEAR_DETECT_WINDOW_MS = 12_000L;
 
     private static boolean wasRiding = false;
+    private static boolean motorStarted = false;
     private static boolean gearHandled = false;
     private static boolean motorBarSeen = false;
     private static boolean isHelicopter = false;
@@ -86,6 +87,12 @@ public final class VehicleAutomation {
         VehicleConfig cfg = VehicleConfig.getInstance();
         boolean inDuty = EmergencyCallManager.getInstance().isInDuty();
 
+        // Re-checked every tick (not just on mount) so enabling the feature, setting "always" or
+        // going on duty while already seated still starts the motor.
+        if (!motorStarted && !exitInProgress && cfg.isMotorEnabled() && (inDuty || cfg.isMotorAlways())) {
+            startMotor(client);
+        }
+
         if (!gearHandled) {
             detectVehicleItem(client, player, cfg, inDuty);
         }
@@ -100,6 +107,7 @@ public final class VehicleAutomation {
     }
 
     private static void onMount(MinecraftClient client, ClientPlayerEntity player) {
+        motorStarted = false;
         gearHandled = false;
         motorBarSeen = false;
         isHelicopter = false;
@@ -109,13 +117,20 @@ public final class VehicleAutomation {
         forceSneak = false;
         dismountDelayTicks = 0;
         mountTimeMs = System.currentTimeMillis();
+    }
 
-        VehicleConfig cfg = VehicleConfig.getInstance();
-        boolean inDuty = EmergencyCallManager.getInstance().isInDuty();
-        if (cfg.isMotorEnabled() && (inDuty || cfg.isMotorAlways())) {
-            sendCommand(client, "vehicles motor");
-            GMMedic.LOGGER.info("[GM-Medic] Vehicle entered — motor started");
-        }
+    /**
+     * Sends the motor-start command and (re)opens the gear-detection window, so a motor started
+     * late (e.g. "always" enabled while already seated) still gets its gear set once the boss bar
+     * clears.
+     */
+    private static void startMotor(MinecraftClient client) {
+        sendCommand(client, "vehicles motor");
+        motorStarted = true;
+        gearHandled = false;
+        motorBarSeen = false;
+        mountTimeMs = System.currentTimeMillis();
+        GMMedic.LOGGER.info("[GM-Medic] Motor start command sent");
     }
 
     private static void onDismount() {
@@ -124,6 +139,7 @@ public final class VehicleAutomation {
         forceSneak = false;
         exitInProgress = false;
         dismountDelayTicks = 0;
+        motorStarted = false;
         gearHandled = false;
         motorBarSeen = false;
         isHelicopter = false;
