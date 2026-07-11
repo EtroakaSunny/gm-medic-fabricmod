@@ -8,10 +8,13 @@ import net.fabricmc.loader.api.FabricLoader;
 
 public class ApiConfig {
    /**
-    * Default GM-Medic API endpoint. Used until overridden via {@code /gmapi url}; an explicitly
-    * blank {@code serverUrl=} line in the config file disables connectivity entirely.
+    * Default GM-Medic API endpoint. Used until overridden via {@code /gmapi url}. A blank
+    * {@code serverUrl=} in the config file is migrated to this default on load; set it to
+    * {@value #DISABLED_VALUE} to turn connectivity off.
     */
    public static final String DEFAULT_SERVER_URL = "wss://medic.dorikku.de/api";
+   /** Sentinel {@code serverUrl} value that disables WebSocket connectivity. */
+   public static final String DISABLED_VALUE = "off";
    private static ApiConfig INSTANCE;
    private boolean loaded = false;
    private String serverUrl = DEFAULT_SERVER_URL;
@@ -54,7 +57,15 @@ public class ApiConfig {
                }
             }
 
-            GMMedic.LOGGER.info("[ApiConfig] Loaded: serverUrl={}", this.serverUrl.isBlank() ? "(none)" : this.serverUrl);
+            if (this.serverUrl.isBlank()) {
+               // Configs written before a default endpoint existed have a blank serverUrl —
+               // migrate them to the default (explicit opt-out is serverUrl=off).
+               this.serverUrl = DEFAULT_SERVER_URL;
+               this.save();
+               GMMedic.LOGGER.info("[ApiConfig] Blank serverUrl migrated to default: {}", DEFAULT_SERVER_URL);
+            }
+
+            GMMedic.LOGGER.info("[ApiConfig] Loaded: serverUrl={}", this.serverUrl);
          } catch (Exception var7) {
             GMMedic.LOGGER.warn("[ApiConfig] Failed to load config, using defaults", var7);
          }
@@ -69,7 +80,7 @@ public class ApiConfig {
          Files.createDirectories(configPath.getParent());
          String content = "# GM-Medic API Configuration\n# Default: "
             + DEFAULT_SERVER_URL
-            + "\n# Leave serverUrl blank to disable WebSocket connectivity\nserverUrl="
+            + "\n# Set serverUrl=off to disable WebSocket connectivity (blank reverts to the default)\nserverUrl="
             + this.serverUrl
             + "\nauthToken="
             + this.authToken
@@ -105,6 +116,6 @@ public class ApiConfig {
    }
 
    public boolean isConfigured() {
-      return !this.serverUrl.isBlank();
+      return !this.serverUrl.isBlank() && !this.serverUrl.equalsIgnoreCase(DISABLED_VALUE);
    }
 }
