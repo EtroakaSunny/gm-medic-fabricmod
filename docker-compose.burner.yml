@@ -1,0 +1,22 @@
+# Overlay for running next to New-GM-API-Burner on the same host.
+#
+# The burner's Caddy already owns ports 80/443, so the bundled caddy service
+# stays off (COMPOSE_PROFILES=) and the app joins the burner's compose network
+# instead, reachable there as "gm-medic". The burner's Caddyfile then proxies
+# medic.dorikku.de to gm-medic:8765.
+#
+# Enable by setting in .env:
+#   COMPOSE_PROFILES=
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.burner.yml
+services:
+  app:
+    networks:
+      default: {}
+      burner:
+        aliases:
+          - gm-medic
+
+networks:
+  burner:
+    external: true
+    name: ${BURNER_NETWORK:-new-gm-api-burner_default}

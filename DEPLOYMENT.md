@@ -43,6 +43,51 @@ on the public fraction roster are approved automatically).
 
 (fast-forwards the branch, rebuilds the image, restarts, prunes old images)
 
+## Alongside New-GM-API-Burner on the same VPS
+
+The burner's Caddy already owns ports 80/443, so the medic stack must not
+start its own — share the burner's Caddy instead. The mod client only cares
+that `wss://medic.dorikku.de/api` answers; who terminates TLS is irrelevant.
+
+1. **DNS**: add an A record for `medic.dorikku.de` → the same VPS IP.
+2. **`.env`**: use the burner-mode block from `.env.example`:
+
+   ```ini
+   COMPOSE_PROFILES=
+   COMPOSE_FILE=docker-compose.yml:docker-compose.burner.yml
+   ```
+
+   This disables the bundled Caddy and joins the app to the burner's compose
+   network (alias `gm-medic`). Check the network name with
+   `docker network ls` — if it isn't `new-gm-api-burner_default`, set
+   `BURNER_NETWORK=<name>` too.
+3. **Start the app** (same command as always, `.env` does the rest):
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. **Burner's Caddyfile**: append a second site block:
+
+   ```caddyfile
+   medic.dorikku.de {
+       reverse_proxy gm-medic:8765
+   }
+   ```
+
+5. **Reload the burner's Caddy** (from the burner's directory):
+
+   ```bash
+   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+   ```
+
+   Caddy fetches the certificate for the new domain automatically.
+
+`./update.sh` works unchanged in this mode. If the burner runs in **tunnel**
+mode instead (cloudflared, no host ports), ports 80/443 are free — just use
+the normal standalone setup, or add `medic.dorikku.de → http://gm-medic:8765`
+as an extra public hostname of the named tunnel.
+
 ## Notes
 
 - The admin GUI is at `https://<domain>/`, login with `GM_ADMIN_USER` /

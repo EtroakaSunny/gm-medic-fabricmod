@@ -28,8 +28,13 @@ services:
 
   # Caddy reverse proxy: automatic HTTPS for $DOMAIN, proxies everything
   # (mod WebSocket /api, admin GUI, admin REST) to the app.
+  # Only in the "standalone" profile — skip it when another reverse proxy on
+  # the host (e.g. New-GM-API-Burner's Caddy) already owns ports 80/443; see
+  # docker-compose.burner.yml and DEPLOYMENT.md.
   caddy:
     image: caddy:2-alpine
+    profiles:
+      - standalone
     depends_on:
       app:
         condition: service_healthy
