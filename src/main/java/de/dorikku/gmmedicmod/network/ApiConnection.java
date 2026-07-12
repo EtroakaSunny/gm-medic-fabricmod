@@ -3,6 +3,7 @@ package de.dorikku.gmmedicmod.network;
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
+import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
 import net.minecraft.client.MinecraftClient;
 
 import java.net.URI;
@@ -155,7 +156,8 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
             double px = client.player.getX();
             double py = client.player.getY();
             double pz = client.player.getZ();
-            send(OutboundMessages.locationUpdate(locationUsername, px, py, pz));
+            boolean driving = VehicleAutomation.isDrivingCar(client);
+            send(OutboundMessages.locationUpdate(locationUsername, px, py, pz, driving));
         }, 2, 2, TimeUnit.SECONDS);
     }
 
