@@ -51,11 +51,34 @@ MAX_EDGES = 250_000       # prune threshold
 EDIT_COUNT = 5
 PRUNE_AGE_MS = 7 * 24 * 3600 * 1000
 
-# Consolidation: periodically collapse straight runs of raster-grid edges
-# (the "staircase" artefacts from sampling onto a GRID-block cell) into fewer,
-# longer edges. A chain node is collapsed only while the path through it
-# deviates less than this from straight, so real turns and intersections
-# keep their shape.
+# Consolidation: periodically (a) weld nearby-but-distinct nodes together and
+# (b) collapse straight runs of raster-grid edges (the "staircase" artefacts
+# from sampling onto a GRID-block cell) into fewer, longer edges.
+#
+# Welding fixes the artefact the straight-run collapse can't: two medics
+# driving the "same" road rarely land on identical cells — lane position,
+# curve line, roundabout radius all vary by a block or two — so the same
+# physical road ends up as several near-parallel, never-quite-touching node
+# chains that stack up into the tangle seen at roundabouts and wide roads.
+# Welding merges any nodes within WELD_RADIUS (same vertical layer) into one,
+# keyed on whichever was busier, before the chain collapse gets a shot at the
+# now-unified path. Kept below typical divided-carriageway spacing so the two
+# separate one-way sides of a real dual carriageway aren't bridged into one.
+WELD_RADIUS = float(os.environ.get("GM_NAV_WELD_RADIUS", str(GRID * 1.5)))
+# Two nodes within WELD_RADIUS are only welded if they *aren't* already
+# joined by a short path through the existing graph — otherwise every road
+# would weld into a single point, since consecutive samples along any one
+# strand (or around a tight curve like a roundabout) are typically closer
+# together than WELD_RADIUS already. "Short path" means a graph path whose
+# length is within WELD_PATH_SLACK of the straight-line distance (points
+# along the same strand have a path that roughly follows the straight line
+# between them); WELD_PATH_CUTOFF bounds how far the search looks before
+# giving up and treating the pair as unconnected (genuinely separate,
+# welding-eligible strands, e.g. a different lap around a roundabout).
+WELD_PATH_SLACK = 1.6
+WELD_PATH_CUTOFF = WELD_RADIUS * 8
+# A chain node is collapsed only while the path through it deviates less than
+# this from straight, so real turns and intersections keep their shape.
 MERGE_ANGLE_DEG = 25.0
 SIMPLIFY_INTERVAL_SECONDS = float(os.environ.get("GM_NAV_SIMPLIFY_HOURS", "24")) * 3600
 
@@ -376,7 +399,169 @@ class NavGraph:
             cur[1] += stat[1]
             cur[2] = max(cur[2], stat[2])
 
-    def simplify(self) -> int:
+    def _weld_nearby_nodes(self) -> int:
+        """Union nodes within ``WELD_RADIUS`` of each other (same vertical
+        layer) into one, so near-duplicate traces of the same physical road —
+        lane-position noise, or a roundabout driven with a slightly different
+        line each lap — collapse onto a single node instead of piling up as
+        separate, overlapping chains. Each cluster keeps its busiest node as
+        the representative, so the network stays anchored on real traffic
+        rather than drifting toward whichever trace happened to weld last.
+        Returns the number of nodes removed.
+        """
+        if WELD_RADIUS <= 0 or len(self.adj) < 3:
+            return 0
+
+        # A node can appear only as someone's neighbour (a dead end at the
+        # tail of a recorded segment) without ever being a top-level key, so
+        # collect every node — and its total (in + out) traffic, plus an
+        # undirected length-weighted adjacency for the path-distance check
+        # below — from the edges themselves rather than just ``self.adj``'s
+        # keys.
+        traffic_map: dict = {}
+        und: dict[tuple, dict] = {}
+        for a, nbs in self.adj.items():
+            for b, stat in nbs.items():
+                traffic_map[a] = traffic_map.get(a, 0) + stat[0]
+                traffic_map[b] = traffic_map.get(b, 0) + stat[0]
+                length = math.dist(_center(a), _center(b))
+                und.setdefault(a, {})[b] = length
+                und.setdefault(b, {})[a] = length
+
+        # Bucket nodes by 2D position (bucket size == WELD_RADIUS) so each
+        # node only needs to check its 3x3 bucket neighbourhood, not every
+        # other node. Buckets are per vertical layer — welding never crosses
+        # layers, since that's what keeps a tunnel and the road above it apart.
+        buckets: dict[tuple[int, int, int], list] = {}
+        for node in traffic_map:
+            x, z = _center(node)
+            bx, bz = math.floor(x / WELD_RADIUS), math.floor(z / WELD_RADIUS)
+            buckets.setdefault((bx, bz, node[2]), []).append(node)
+
+        def traffic(node) -> int:
+            return traffic_map.get(node, 0)
+
+        parent: dict = {n: n for n in traffic_map}
+        # Bounding box of each cluster (by root), so a long run of individually
+        # "reasonable" welds can't domino-chain an entire road into one point:
+        # welding two clusters is refused once the combined box would exceed
+        # WELD_RADIUS on either axis, capping every cluster to roughly one
+        # intersection's footprint instead of an unbounded strand.
+        bbox: dict = {n: [x, z, x, z] for n, (x, z) in ((n, _center(n)) for n in traffic_map)}
+
+        def find(n):
+            while parent[n] != n:
+                parent[n] = parent[parent[n]]
+                n = parent[n]
+            return n
+
+        def try_union(a, b) -> bool:
+            ra, rb = find(a), find(b)
+            if ra == rb:
+                return True
+            box_a, box_b = bbox[ra], bbox[rb]
+            merged = [min(box_a[0], box_b[0]), min(box_a[1], box_b[1]),
+                      max(box_a[2], box_b[2]), max(box_a[3], box_b[3])]
+            if merged[2] - merged[0] > WELD_RADIUS or merged[3] - merged[1] > WELD_RADIUS:
+                return False
+            if traffic(ra) < traffic(rb):
+                ra, rb = rb, ra
+            parent[rb] = ra
+            bbox[ra] = merged
+            del bbox[rb]
+            return True
+
+        def path_distance(start, targets: set) -> dict:
+            """Bounded Dijkstra over the undirected graph, stopping once the
+            travelled distance exceeds ``WELD_PATH_CUTOFF``. Returns the
+            reached subset of ``targets`` mapped to path length."""
+            found: dict = {}
+            dist = {start: 0.0}
+            pq = [(0.0, start)]
+            remaining = set(targets)
+            while pq and remaining:
+                d, n = heapq.heappop(pq)
+                if d > dist.get(n, math.inf) or d > WELD_PATH_CUTOFF:
+                    continue
+                if n in remaining:
+                    found[n] = d
+                    remaining.discard(n)
+                for nb, length in und.get(n, {}).items():
+                    nd = d + length
+                    if nd <= WELD_PATH_CUTOFF and nd < dist.get(nb, math.inf):
+                        dist[nb] = nd
+                        heapq.heappush(pq, (nd, nb))
+            return found
+
+        r2 = WELD_RADIUS * WELD_RADIUS
+        candidates: list = []
+        for (bx, bz, cy), nodes in buckets.items():
+            neighbours = []
+            for dx in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    neighbours.extend(buckets.get((bx + dx, bz + dz, cy), []))
+            for a in nodes:
+                ax, az = _center(a)
+                close: dict = {}
+                for b in neighbours:
+                    if b <= a:  # each unordered pair only once, regardless of bucket
+                        continue
+                    bx2, bz2 = _center(b)
+                    d2 = (ax - bx2) ** 2 + (az - bz2) ** 2
+                    if d2 <= r2:
+                        close[b] = math.sqrt(d2)
+                if not close:
+                    continue
+                # Points reachable through the graph by roughly as direct a
+                # path as the straight line between them are the same strand
+                # (e.g. consecutive samples along a road, or around a curve)
+                # — leave those for the straight-run collapse. Only weld
+                # pairs that are spatially close but graph-far: a genuinely
+                # separate near-duplicate trace.
+                reached = path_distance(a, set(close))
+                for b, euclid in close.items():
+                    pd = reached.get(b)
+                    if pd is not None and pd <= WELD_PATH_SLACK * max(euclid, 0.1):
+                        continue
+                    candidates.append((euclid, a, b))
+
+        # Nearest pairs first, so tight clusters form before a farther,
+        # marginal candidate gets a chance to claim (and cap out) a cluster's
+        # remaining bounding-box budget.
+        candidates.sort(key=lambda c: c[0])
+        for _, a, b in candidates:
+            try_union(a, b)
+
+        # Rebuild adjacency onto cluster representatives, merging duplicate
+        # edges and dropping self-loops left where a cluster's own internal
+        # edges used to connect its now-merged members.
+        new_adj: dict = {}
+        new_edge_count = 0
+        for a, nbs in self.adj.items():
+            ra = find(a)
+            for b, stat in nbs.items():
+                rb = find(b)
+                if ra == rb:
+                    continue
+                edges = new_adj.setdefault(ra, {})
+                cur = edges.get(rb)
+                if cur is None:
+                    edges[rb] = list(stat)
+                    new_edge_count += 1
+                else:
+                    cur[0] += stat[0]
+                    cur[1] += stat[1]
+                    cur[2] = max(cur[2], stat[2])
+
+        welded = len(self.adj) - len(new_adj)
+        if welded:
+            self.adj = new_adj
+            self.edge_count = new_edge_count
+            self._dirty = True
+            log.info("Nav graph welded: %d nearby nodes merged", welded)
+        return welded
+
+    def _collapse_straight_runs(self) -> int:
         """Collapse straight runs of pass-through nodes into fewer, longer
         edges — the "staircase" that ``GRID``-sized rasterisation leaves
         along an otherwise straight road. A node qualifies when it has
@@ -434,8 +619,27 @@ class NavGraph:
 
         if removed_nodes:
             self._dirty = True
-            log.info("Nav graph simplified: %d pass-through nodes collapsed", removed_nodes)
         return removed_nodes
+
+    def simplify(self) -> int:
+        """Run the full consolidation pass: weld nearby-but-distinct node
+        chains together (see ``_weld_nearby_nodes``), then collapse the
+        resulting straight runs (see ``_collapse_straight_runs``). Welding
+        can turn newly-merged nodes into fresh pass-throughs and vice versa,
+        so the two alternate until neither finds anything left to do (capped
+        to avoid pathological looping). Returns the total number of nodes
+        removed.
+        """
+        total = 0
+        for _ in range(8):
+            welded = self._weld_nearby_nodes()
+            collapsed = self._collapse_straight_runs()
+            total += welded + collapsed
+            if not welded and not collapsed:
+                break
+        if total:
+            log.info("Nav graph simplified: %d nodes consolidated", total)
+        return total
 
     # --- Persistence ---
 
