@@ -53,3 +53,13 @@ def nav_erase(body: NavEraseRequest, _: dict = Depends(get_current_admin)):
     removed = nav.erase(_points_2d(body.points), radius)
     nav.save()
     return {"removed": removed, **nav.stats()}
+
+
+@router.post("/consolidate")
+def nav_consolidate(_: dict = Depends(get_current_admin)):
+    """Run the straight-run consolidation pass immediately instead of
+    waiting for the next scheduled run (see ``GM_NAV_SIMPLIFY_HOURS``).
+    Admin only."""
+    collapsed = nav.simplify()
+    nav.save()
+    return {"collapsed": collapsed, **nav.stats()}

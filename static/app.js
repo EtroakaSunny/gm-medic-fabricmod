@@ -522,6 +522,7 @@ function initNavEditor() {
     }
     document.getElementById("nav-draw-apply").addEventListener("click", applyDraw);
     document.getElementById("nav-draw-cancel").addEventListener("click", () => cancelDraw(true));
+    document.getElementById("nav-consolidate").addEventListener("click", consolidateNav);
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && navMode !== "route") setNavMode("route");
     });
@@ -612,6 +613,20 @@ async function finishErase() {
         setNavInfo(`${r.removed} Segmente entfernt.`);
     } catch {
         setNavInfo("Radieren fehlgeschlagen.");
+    }
+}
+
+async function consolidateNav() {
+    setNavInfo("Konsolidiere Straßennetz …");
+    try {
+        const res = await api("/api/nav/consolidate", { method: "POST" });
+        const r = await res.json();
+        if (!res.ok) { setNavInfo(r?.detail || "Konsolidierung fehlgeschlagen."); return; }
+        if (navGraphLayer) await loadNavGraph();
+        else refreshNavStats();
+        setNavInfo(`${r.collapsed} Knoten zusammengefasst.`);
+    } catch {
+        setNavInfo("Konsolidierung fehlgeschlagen.");
     }
 }
 
