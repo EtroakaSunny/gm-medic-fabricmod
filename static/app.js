@@ -523,6 +523,7 @@ function initNavEditor() {
     document.getElementById("nav-draw-apply").addEventListener("click", applyDraw);
     document.getElementById("nav-draw-cancel").addEventListener("click", () => cancelDraw(true));
     document.getElementById("nav-consolidate").addEventListener("click", consolidateNav);
+    document.getElementById("nav-reset").addEventListener("click", resetNavData);
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && navMode !== "route") setNavMode("route");
     });
@@ -627,6 +628,26 @@ async function consolidateNav() {
         setNavInfo(`${r.collapsed} Knoten zusammengefasst.`);
     } catch {
         setNavInfo("Konsolidierung fehlgeschlagen.");
+    }
+}
+
+async function resetNavData() {
+    if (!confirm("Wirklich das gesamte gelernte Straßennetz löschen? Das kann nicht rückgängig gemacht werden.")) return;
+    const password = prompt("Zur Bestätigung dein Passwort eingeben:");
+    if (!password) return;
+    setNavInfo("Setze Straßennetz zurück …");
+    try {
+        const res = await api("/api/nav/reset", {
+            method: "POST",
+            body: JSON.stringify({ password }),
+        });
+        const r = await res.json();
+        if (!res.ok) { setNavInfo(r?.detail || "Zurücksetzen fehlgeschlagen."); return; }
+        if (navGraphLayer) await loadNavGraph();
+        else refreshNavStats();
+        setNavInfo("Straßennetz wurde vollständig zurückgesetzt.");
+    } catch {
+        setNavInfo("Zurücksetzen fehlgeschlagen.");
     }
 }
 

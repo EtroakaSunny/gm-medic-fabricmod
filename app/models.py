@@ -47,6 +47,10 @@ class NavEraseRequest(BaseModel):
     radius: float = 8.0
 
 
+class NavResetRequest(BaseModel):
+    password: str
+
+
 class MedicCreate(BaseModel):
     username: str
     display_name: str | None = None

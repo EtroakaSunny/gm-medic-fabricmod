@@ -64,6 +64,8 @@ button {
 }
 button:hover { filter: brightness(1.08); }
 button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+button.ghost.danger { color: var(--danger); border-color: var(--danger); }
+button.ghost.danger:hover { background: var(--danger); color: #fff; }
 .error { color: var(--danger); font-size: 13px; text-align: center; min-height: 16px; }
 
 /* --- Dashboard --- */

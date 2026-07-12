@@ -1,9 +1,10 @@
 """REST API for the beta street-navigation system (see nav.py)."""
 from fastapi import APIRouter, Depends, HTTPException
 
-from .models import NavDrawRequest, NavEraseRequest
+from . import database
+from .models import NavDrawRequest, NavEraseRequest, NavResetRequest
 from .nav import GRID, nav
-from .security import get_current_admin, require_permission
+from .security import get_current_admin, require_permission, verify_password
 
 router = APIRouter(prefix="/api/nav", dependencies=[Depends(require_permission("nav"))])
 
@@ -63,3 +64,16 @@ def nav_consolidate(_: dict = Depends(get_current_admin)):
     collapsed = nav.simplify()
     nav.save()
     return {"collapsed": collapsed, **nav.stats()}
+
+
+@router.post("/reset")
+def nav_reset(body: NavResetRequest, admin: dict = Depends(get_current_admin)):
+    """Wipe the entire learned nav graph. Admin only, and re-checks the
+    caller's current password on top of their session token — this can't be
+    undone, so a stolen/left-open admin tab shouldn't be enough on its own."""
+    row = database.get_user(admin["username"])
+    if row is None or not verify_password(body.password, row["password_hash"]):
+        raise HTTPException(status_code=403, detail="Passwort ist falsch")
+    nav.reset()
+    nav.save()
+    return nav.stats()

@@ -179,6 +179,17 @@ class NavGraph:
         """Break the movement track (duty off / disconnect)."""
         self._last.pop(username, None)
 
+    def reset(self) -> None:
+        """Wipe the entire learned graph — irreversible. Used by the admin
+        GUI's "reset map data" button, which re-checks the caller's password
+        before calling this (see ``api_nav.nav_reset``)."""
+        self.adj.clear()
+        self.edge_count = 0
+        self.segments = 0
+        self._last.clear()
+        self._dirty = True
+        log.info("Nav graph reset: all data cleared")
+
     # --- Manual editing (admin GUI pencil/eraser) ---
 
     def _mean_speed(self) -> float:
