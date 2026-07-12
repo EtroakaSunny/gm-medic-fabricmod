@@ -38,6 +38,15 @@ class UserOut(BaseModel):
     created_at: int
 
 
+class NavDrawRequest(BaseModel):
+    points: list[list[float]]
+
+
+class NavEraseRequest(BaseModel):
+    points: list[list[float]]
+    radius: float = 8.0
+
+
 class MedicCreate(BaseModel):
     username: str
     display_name: str | None = None

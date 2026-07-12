@@ -150,7 +150,9 @@ button.ghost { background: transparent; border: 1px solid var(--border); color: 
     min-height: 0;
 }
 .nav-stats { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 13px; }
-.nav-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.nav-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+.nav-actions select { padding: 8px 10px; font-size: 13px; }
+.nav-actions .ghost.active { border-color: var(--accent); color: var(--accent); }
 .nav-route-info { font-size: 13px; min-height: 18px; margin-top: 6px; }
 .legend .line { width: 16px; height: 3px; border-radius: 2px; }
 .legend .line.slow { background: #8b93a1; }

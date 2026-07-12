@@ -43,6 +43,9 @@ MAX_DT_MS = 10_000        # gap (lag, off duty, reconnect) — breaks the track
 MAX_DY = 12.0             # vertical jump — elevator/teleport, breaks the track
 SNAP_RADIUS = 96.0        # blocks — max distance from a query point to the net
 MAX_EDGES = 250_000       # prune threshold
+# Hand-drawn edges get this traversal count so the router's min_count=2
+# preference keeps them and pruning never drops them as single-use noise.
+EDIT_COUNT = 5
 PRUNE_AGE_MS = 7 * 24 * 3600 * 1000
 
 GRAPH_PATH = config.DATA_DIR / "nav-graph.json"
@@ -128,6 +131,127 @@ class NavGraph:
     def forget_track(self, username: str) -> None:
         """Break the movement track (duty off / disconnect)."""
         self._last.pop(username, None)
+
+    # --- Manual editing (admin GUI pencil/eraser) ---
+
+    def _mean_speed(self) -> float:
+        """Average learned driving speed, used for hand-drawn edges."""
+        total_count, total_speed = 0, 0.0
+        for nbs in self.adj.values():
+            for count, speed_sum, _ts in nbs.values():
+                total_count += count
+                total_speed += speed_sum
+        return total_speed / total_count if total_count else 12.0
+
+    def draw(self, points: list[tuple[float, float]]) -> int:
+        """Add a hand-drawn street along the 2D polyline (both directions).
+
+        Map clicks carry no height, so each cell snaps onto the vertical
+        layer of an existing node at that 2D cell where present (joining the
+        learned network); elsewhere it continues on the previous layer,
+        starting from the graph's most common layer. Returns the number of
+        new directed edges.
+        """
+        if len(points) < 2:
+            return 0
+
+        # 2D cell -> existing vertical layers, for layer snapping.
+        by2d: dict[tuple[int, int], list[int]] = {}
+        layer_freq: dict[int, int] = {}
+        for (cx, cz, cy) in self.adj:
+            by2d.setdefault((cx, cz), []).append(cy)
+            layer_freq[cy] = layer_freq.get(cy, 0) + 1
+        layer = max(layer_freq, key=layer_freq.get) if layer_freq else 6  # y 60-69
+
+        # Rasterise the polyline into deduplicated 2D cells.
+        cells2d: list[tuple[int, int]] = []
+        for (x1, z1), (x2, z2) in zip(points, points[1:]):
+            dist = math.hypot(x2 - x1, z2 - z1)
+            steps = max(1, math.ceil(dist / (GRID * 0.45)))
+            for i in range(steps + 1):
+                f = i / steps
+                c = (math.floor((x1 + (x2 - x1) * f) / GRID),
+                     math.floor((z1 + (z2 - z1) * f) / GRID))
+                if not cells2d or cells2d[-1] != c:
+                    cells2d.append(c)
+        if len(cells2d) < 2:
+            return 0
+
+        speed = self._mean_speed()
+        now_ms = int(time.time() * 1000)
+        added = 0
+        prev = None
+        for c2 in cells2d:
+            layers = by2d.get(c2)
+            if layers:
+                layer = min(layers, key=lambda ly: abs(ly - layer))
+            node = (c2[0], c2[1], layer)
+            if prev is not None and prev != node:
+                for a, b in ((prev, node), (node, prev)):
+                    stat = self.adj.setdefault(a, {}).get(b)
+                    if stat is None:
+                        self.adj[a][b] = [EDIT_COUNT, speed * EDIT_COUNT, now_ms]
+                        self.edge_count += 1
+                        added += 1
+                    else:
+                        stat[0] = max(stat[0], EDIT_COUNT)
+                        stat[2] = now_ms
+            prev = node
+        if added:
+            self._dirty = True
+        return added
+
+    def erase(self, points: list[tuple[float, float]], radius: float) -> int:
+        """Remove every edge with an endpoint within ``radius`` blocks (2D)
+        of the brush polyline — across all vertical layers, since the map
+        eraser cannot see height. Returns the number of directed edges removed."""
+        if not points:
+            return 0
+        pad = radius + GRID
+        min_x = min(p[0] for p in points) - pad
+        max_x = max(p[0] for p in points) + pad
+        min_z = min(p[1] for p in points) - pad
+        max_z = max(p[1] for p in points) + pad
+
+        def near(px: float, pz: float) -> bool:
+            if not (min_x <= px <= max_x and min_z <= pz <= max_z):
+                return False
+            if len(points) == 1:
+                return math.hypot(px - points[0][0], pz - points[0][1]) <= radius
+            for (x1, z1), (x2, z2) in zip(points, points[1:]):
+                dx, dz = x2 - x1, z2 - z1
+                len_sq = dx * dx + dz * dz
+                if len_sq == 0:
+                    d = math.hypot(px - x1, pz - z1)
+                else:
+                    t = max(0.0, min(1.0, ((px - x1) * dx + (pz - z1) * dz) / len_sq))
+                    d = math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz))
+                if d <= radius:
+                    return True
+            return False
+
+        hit_cache: dict[tuple[int, int, int], bool] = {}
+
+        def node_hit(node) -> bool:
+            hit = hit_cache.get(node)
+            if hit is None:
+                hit = near(*_center(node))
+                hit_cache[node] = hit
+            return hit
+
+        removed = 0
+        for a in list(self.adj):
+            nbs = self.adj[a]
+            a_hit = node_hit(a)
+            for b in [b for b in nbs if a_hit or node_hit(b)]:
+                del nbs[b]
+                removed += 1
+            if not nbs:
+                del self.adj[a]
+        self.edge_count -= removed
+        if removed:
+            self._dirty = True
+        return removed
 
     # --- Routing ---
 

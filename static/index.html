@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GM-Medic Leitstelle</title>
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
     <!-- Login -->
@@ -71,7 +71,22 @@
                     <button id="nav-show-graph">Straßennetz anzeigen</button>
                     <button id="nav-clear-route" class="ghost">Route löschen</button>
                 </div>
-                <p class="meta">Route: erst den Start, dann das Ziel auf der Karte anklicken.</p>
+                <div class="nav-actions hidden" id="nav-edit-tools">
+                    <button id="nav-mode-route" class="ghost active">Route</button>
+                    <button id="nav-mode-draw" class="ghost">✏️ Zeichnen</button>
+                    <button id="nav-mode-erase" class="ghost">⌫ Radieren</button>
+                    <select id="nav-brush" title="Radiergröße">
+                        <option value="4">4 Blöcke</option>
+                        <option value="8" selected>8 Blöcke</option>
+                        <option value="16">16 Blöcke</option>
+                        <option value="32">32 Blöcke</option>
+                    </select>
+                </div>
+                <div class="nav-actions hidden" id="nav-draw-confirm">
+                    <button id="nav-draw-apply">Übernehmen</button>
+                    <button id="nav-draw-cancel" class="ghost">Abbrechen</button>
+                </div>
+                <p class="meta" id="nav-hint">Route: erst den Start, dann das Ziel auf der Karte anklicken.</p>
                 <p id="nav-route-info" class="nav-route-info"></p>
             </section>
 
@@ -123,6 +138,6 @@
     </div>
 
     <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
 </body>
 </html>

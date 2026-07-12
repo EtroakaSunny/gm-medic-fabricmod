@@ -435,6 +435,7 @@ function initNavView() {
     navMap.on("click", onNavMapClick);
     document.getElementById("nav-show-graph").addEventListener("click", loadNavGraph);
     document.getElementById("nav-clear-route").addEventListener("click", clearNavRoute);
+    if (isAdmin()) initNavEditor();
     refreshNavStats();
 }
 
@@ -482,6 +483,12 @@ async function loadNavGraph() {
 
 function onNavMapClick(e) {
     const x = e.latlng.lng, z = -e.latlng.lat;
+    if (navMode === "draw") {
+        drawPoints.push([x, z]);
+        updateDrawPreview();
+        return;
+    }
+    if (navMode === "erase") return; // handled by mousedown/up drag
     if (navStart === null) {
         clearNavRoute();
         navStart = { x, z };
@@ -492,6 +499,119 @@ function onNavMapClick(e) {
     } else {
         requestNavRoute(navStart, { x, z });
         navStart = null;
+    }
+}
+
+// --- Nav editor: pencil (add streets) and eraser (remove false routes) ---
+
+let navMode = "route"; // "route" | "draw" | "erase"
+let drawPoints = [];   // [[x, z], ...] pending pencil vertices
+let drawPreview = null;
+let eraseStroke = null; // {points: [[x, z], ...], line: L.Polyline} while dragging
+
+const NAV_HINTS = {
+    route: "Route: erst den Start, dann das Ziel auf der Karte anklicken.",
+    draw: "Zeichnen: Punkte anklicken, dann „Übernehmen“. Esc bricht ab.",
+    erase: "Radieren: mit gedrückter Maustaste über falsche Routen ziehen.",
+};
+
+function initNavEditor() {
+    document.getElementById("nav-edit-tools").classList.remove("hidden");
+    for (const mode of ["route", "draw", "erase"]) {
+        document.getElementById(`nav-mode-${mode}`).addEventListener("click", () => setNavMode(mode));
+    }
+    document.getElementById("nav-draw-apply").addEventListener("click", applyDraw);
+    document.getElementById("nav-draw-cancel").addEventListener("click", () => cancelDraw(true));
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && navMode !== "route") setNavMode("route");
+    });
+
+    navMap.on("mousedown", (e) => {
+        if (navMode !== "erase") return;
+        eraseStroke = {
+            points: [[e.latlng.lng, -e.latlng.lat]],
+            line: L.polyline([e.latlng], {
+                color: "#e5534b", opacity: 0.45, interactive: false,
+                weight: Math.max(6, brushBlocks() * 2 * pxPerBlock()),
+            }).addTo(navMap),
+        };
+    });
+    navMap.on("mousemove", (e) => {
+        if (!eraseStroke) return;
+        eraseStroke.points.push([e.latlng.lng, -e.latlng.lat]);
+        eraseStroke.line.addLatLng(e.latlng);
+    });
+    window.addEventListener("mouseup", finishErase);
+}
+
+function brushBlocks() { return Number(document.getElementById("nav-brush").value); }
+function pxPerBlock() { return Math.pow(5, navMap.getZoom()) / 25; }
+
+function setNavMode(mode) {
+    if (mode !== "draw") cancelDraw(false);
+    if (eraseStroke) { eraseStroke.line.remove(); eraseStroke = null; }
+    navMode = mode;
+    for (const m of ["route", "draw", "erase"]) {
+        document.getElementById(`nav-mode-${m}`).classList.toggle("active", m === mode);
+    }
+    document.getElementById("nav-draw-confirm").classList.toggle("hidden", mode !== "draw");
+    document.getElementById("nav-hint").textContent = NAV_HINTS[mode];
+    // Dragging the map would fight the eraser stroke.
+    if (mode === "erase") navMap.dragging.disable(); else navMap.dragging.enable();
+    navMap.getContainer().style.cursor = mode === "route" ? "" : "crosshair";
+    setNavInfo("");
+}
+
+function updateDrawPreview() {
+    if (drawPreview) drawPreview.remove();
+    drawPreview = L.layerGroup([
+        L.polyline(drawPoints.map(p => blockLatLng(p[0], p[1])),
+            { color: "#f0d05a", weight: 3, dashArray: "6 6", interactive: false }),
+        ...drawPoints.map(p => L.circleMarker(blockLatLng(p[0], p[1]),
+            { radius: 4, weight: 1, color: "#10141a", fillColor: "#f0d05a", fillOpacity: 1, interactive: false })),
+    ]).addTo(navMap);
+    setNavInfo(`${drawPoints.length} Punkt(e) gesetzt.`);
+}
+
+function cancelDraw(showHint) {
+    drawPoints = [];
+    if (drawPreview) { drawPreview.remove(); drawPreview = null; }
+    if (showHint) setNavInfo("");
+}
+
+async function applyDraw() {
+    if (drawPoints.length < 2) { setNavInfo("Mindestens 2 Punkte setzen."); return; }
+    try {
+        const res = await api("/api/nav/edit/draw", {
+            method: "POST",
+            body: JSON.stringify({ points: drawPoints }),
+        });
+        const r = await res.json();
+        if (!res.ok) { setNavInfo(r?.detail || "Zeichnen fehlgeschlagen."); return; }
+        cancelDraw(false);
+        await loadNavGraph();
+        setNavInfo(`${r.added} Segmente hinzugefügt.`);
+    } catch {
+        setNavInfo("Zeichnen fehlgeschlagen.");
+    }
+}
+
+async function finishErase() {
+    if (!eraseStroke) return;
+    const { points, line } = eraseStroke;
+    eraseStroke = null;
+    line.remove();
+    try {
+        const res = await api("/api/nav/edit/erase", {
+            method: "POST",
+            body: JSON.stringify({ points, radius: brushBlocks() }),
+        });
+        const r = await res.json();
+        if (!res.ok) { setNavInfo(r?.detail || "Radieren fehlgeschlagen."); return; }
+        await loadNavGraph();
+        setNavInfo(`${r.removed} Segmente entfernt.`);
+    } catch {
+        setNavInfo("Radieren fehlgeschlagen.");
     }
 }
 

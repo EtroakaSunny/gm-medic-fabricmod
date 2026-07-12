@@ -138,10 +138,20 @@ the nearest learned node (≤96 blocks) and runs Dijkstra over travel time
 (edge length ÷ learned speed), preferring edges driven at least twice and
 relaxing to once when the strict graph is not connected yet. `GET
 /api/nav/graph` returns the display edges, `GET /api/nav/stats` the counters;
-all three require an admin JWT. In the GUI: open the Navigation tab, click
-"Straßennetz anzeigen" to see what has been learned (grey/orange/green by
-speed), then click start and destination on the map to get a route with
-distance and estimated drive time.
+all three need the `nav` view permission. In the GUI: open the Navigation
+tab, click "Straßennetz anzeigen" to see what has been learned
+(grey/orange/green by speed), then click start and destination on the map to
+get a route with distance and estimated drive time.
+
+Admins additionally get fine-tuning tools in the tab: a **pencil**
+(click waypoints, "Übernehmen") that draws a two-way street along the line —
+snapping onto the vertical layer of existing nodes it crosses, elsewhere
+using the graph's most common layer — and an **eraser** (drag over the map,
+brush size selectable) that removes every edge near the stroke across all
+layers. Drawn edges get traversal count 5 (`EDIT_COUNT`) and the graph's mean
+speed, so routing keeps them and pruning never drops them; both operations
+save the graph immediately (`POST /api/nav/edit/draw` / `.../erase`, admin
+role required).
 
 ## Live map (BlueMap proxy)
 
