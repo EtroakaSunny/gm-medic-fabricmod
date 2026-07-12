@@ -126,7 +126,9 @@ the medics' own drives — no block data, no extra client work. On-duty
 traffic never qualify) are joined into movement segments, rasterised onto a
 4-block grid and stored as **directed** edges with traversal count and average
 speed (`app/nav.py`, persisted to `data/nav-graph.json`, autosaved every
-5 min). Filters keep the graph clean: segments slower than
+5 min). Grid cells also carry a coarse 10-block vertical layer, so a tunnel
+and the road above it stay separate roads (no phantom junction where they
+cross) while ramps still connect the layers. Filters keep the graph clean: segments slower than
 `GM_NAV_MIN_SPEED`, faster than 40 blocks/s (teleport), with >12 blocks
 vertical jump or >10 s gaps are dropped, and the track breaks on duty-off or
 disconnect.

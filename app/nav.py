@@ -4,10 +4,13 @@ On-duty medics stream their position every ~2 s, tagged ``driving`` while the
 client detects them sitting in a car (vehicle control item in the hotbar;
 helicopters carry a different item and are excluded). Consecutive driving
 samples of one medic form a movement segment; segments are rasterised onto a
-coarse grid (``GRID`` blocks per cell) and stored as directed edges carrying
-traversal count and average speed. Over time the drivable street network
-emerges from usage alone — no block data needed: streets are what gets driven
-on, and one-way roads are learned naturally from direction.
+coarse grid (``GRID`` blocks per cell, ``Y_LAYER`` blocks per vertical layer)
+and stored as directed edges carrying traversal count and average speed. Over
+time the drivable street network emerges from usage alone — no block data
+needed: streets are what gets driven on, and one-way roads are learned
+naturally from direction. The vertical layer keeps a tunnel and the road
+above it apart (no phantom junction where they cross), while ramps still
+connect layers because their samples span both.
 
 Routing is plain Dijkstra over travel time (edge length / learned average
 speed), which on this graph size (tens of thousands of edges) takes
@@ -26,6 +29,9 @@ from . import config
 log = logging.getLogger("gm-medic.nav")
 
 GRID = 4                  # blocks per grid cell (streets are ~5-7 wide)
+# Vertical layer height. Separates a tunnel from the road above it (they are
+# typically 6+ blocks apart) without splitting ordinary slopes into layers.
+Y_LAYER = 10
 MAX_SPEED = 40.0          # blocks/s — anything faster is a teleport/respawn
 # The client only tags samples as ``driving`` while seated in a car (hotbar
 # vehicle item; helicopters excluded), so this is just a sanity floor against
@@ -43,18 +49,19 @@ GRAPH_PATH = config.DATA_DIR / "nav-graph.json"
 AUTOSAVE_SECONDS = 300
 
 
-def _cell(x: float, z: float) -> tuple[int, int]:
-    return (math.floor(x / GRID), math.floor(z / GRID))
+def _cell(x: float, z: float, y: float) -> tuple[int, int, int]:
+    return (math.floor(x / GRID), math.floor(z / GRID), math.floor(y / Y_LAYER))
 
 
-def _center(cell: tuple[int, int]) -> tuple[float, float]:
+def _center(cell: tuple[int, int, int]) -> tuple[float, float]:
+    """2D centre of a cell — the vertical layer only disambiguates nodes."""
     return (cell[0] * GRID + GRID / 2, cell[1] * GRID + GRID / 2)
 
 
 class NavGraph:
     def __init__(self) -> None:
         # directed adjacency: cell -> {neighbour cell: [count, speed_sum, last_ms]}
-        self.adj: dict[tuple[int, int], dict[tuple[int, int], list]] = {}
+        self.adj: dict[tuple[int, int, int], dict[tuple[int, int, int], list]] = {}
         self.edge_count = 0
         self.segments = 0  # accepted movement segments (lifetime)
         self._last: dict[str, tuple[float, float, float, int]] = {}  # user -> x,y,z,t
@@ -92,12 +99,13 @@ class NavGraph:
             return  # creeping/parking — too slow to be street driving
 
         # Rasterise the segment: sample along the line finely enough that
-        # consecutive cells are always neighbours, then connect them.
+        # consecutive cells are always neighbours, then connect them. The
+        # y interpolation lets ramps bridge vertical layers naturally.
         steps = max(1, math.ceil(dist / (GRID * 0.45)))
         cells = []
         for i in range(steps + 1):
             f = i / steps
-            c = _cell(px + (x - px) * f, pz + (z - pz) * f)
+            c = _cell(px + (x - px) * f, pz + (z - pz) * f, py + (y - py) * f)
             if not cells or cells[-1] != c:
                 cells.append(c)
         if len(cells) < 2:
@@ -123,7 +131,10 @@ class NavGraph:
 
     # --- Routing ---
 
-    def _nearest_node(self, x: float, z: float) -> tuple[int, int] | None:
+    def _nearest_node(self, x: float, z: float) -> tuple[int, int, int] | None:
+        """Nearest node in 2D — query points come from map clicks and carry
+        no height, so an overlap picks one layer arbitrarily. Both layers are
+        real drivable roads, so the resulting route is still valid."""
         best, best_d = None, SNAP_RADIUS
         for node in self.adj:
             nx, nz = _center(node)
@@ -139,8 +150,8 @@ class NavGraph:
             return None
 
         # Dijkstra over travel time.
-        dist_to: dict[tuple[int, int], float] = {start: 0.0}
-        prev: dict[tuple[int, int], tuple[int, int]] = {}
+        dist_to: dict[tuple[int, int, int], float] = {start: 0.0}
+        prev: dict[tuple[int, int, int], tuple[int, int, int]] = {}
         pq = [(0.0, start)]
         while pq:
             d, node = heapq.heappop(pq)
@@ -230,9 +241,10 @@ class NavGraph:
         self._prune()
         data = {
             "grid": GRID,
+            "yLayer": Y_LAYER,
             "segments": self.segments,
             "edges": {
-                f"{a[0]},{a[1]}|{b[0]},{b[1]}": s
+                f"{a[0]},{a[1]},{a[2]}|{b[0]},{b[1]},{b[2]}": s
                 for a, nbs in self.adj.items() for b, s in nbs.items()
             },
         }
@@ -248,8 +260,8 @@ class NavGraph:
             return
         try:
             data = json.loads(GRAPH_PATH.read_text(encoding="utf-8"))
-            if data.get("grid") != GRID:
-                log.warning("Nav graph grid size changed — starting fresh")
+            if data.get("grid") != GRID or data.get("yLayer") != Y_LAYER:
+                log.warning("Nav graph grid/layer size changed — starting fresh")
                 return
             self.segments = int(data.get("segments", 0))
             for key, stat in data.get("edges", {}).items():
