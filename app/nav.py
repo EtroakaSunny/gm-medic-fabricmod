@@ -65,18 +65,20 @@ PRUNE_AGE_MS = 7 * 24 * 3600 * 1000
 # now-unified path. Kept below typical divided-carriageway spacing so the two
 # separate one-way sides of a real dual carriageway aren't bridged into one.
 WELD_RADIUS = float(os.environ.get("GM_NAV_WELD_RADIUS", str(GRID * 1.5)))
-# Two nodes within WELD_RADIUS are only welded if they *aren't* already
-# joined by a short path through the existing graph — otherwise every road
-# would weld into a single point, since consecutive samples along any one
-# strand (or around a tight curve like a roundabout) are typically closer
-# together than WELD_RADIUS already. "Short path" means a graph path whose
-# length is within WELD_PATH_SLACK of the straight-line distance (points
-# along the same strand have a path that roughly follows the straight line
-# between them); WELD_PATH_CUTOFF bounds how far the search looks before
-# giving up and treating the pair as unconnected (genuinely separate,
-# welding-eligible strands, e.g. a different lap around a roundabout).
-WELD_PATH_SLACK = 1.6
-WELD_PATH_CUTOFF = WELD_RADIUS * 8
+# Two nodes within WELD_RADIUS are only welded if their local travel
+# direction roughly agrees (this is what tells a near-duplicate recording of
+# the same lane apart from a genuinely different road crossing nearby) —
+# without this, welding near a busy junction would just as happily fuse a
+# through-lane node into a crossing road's turn-lane node because they
+# happen to sit close together. WELD_ANGLE_DEG is the max angle between the
+# pair's closest-aligned edge directions (edges are treated as undirected
+# lines here, so a two-way street's opposing edges still count as aligned).
+# Each cluster's bounding box is additionally capped at WELD_RADIUS (see
+# ``_weld_nearby_nodes``), which is what actually stops a long run of
+# individually-fine welds from chaining an entire road into one point —
+# direction alone doesn't, since consecutive points on a straight road share
+# a direction too.
+WELD_ANGLE_DEG = 30.0
 # A chain node is collapsed only while the path through it deviates less than
 # this from straight, so real turns and intersections keep their shape.
 MERGE_ANGLE_DEG = 25.0
@@ -414,19 +416,40 @@ class NavGraph:
 
         # A node can appear only as someone's neighbour (a dead end at the
         # tail of a recorded segment) without ever being a top-level key, so
-        # collect every node — and its total (in + out) traffic, plus an
-        # undirected length-weighted adjacency for the path-distance check
-        # below — from the edges themselves rather than just ``self.adj``'s
-        # keys.
+        # collect every node — its total (in + out) traffic, and the unit
+        # direction of every edge touching it (for the direction-compatibility
+        # check below) — from the edges themselves rather than just
+        # ``self.adj``'s keys. An edge's direction is a fair "local heading"
+        # for both of its endpoints since it's a straight segment between them.
         traffic_map: dict = {}
-        und: dict[tuple, dict] = {}
+        edge_dirs: dict[tuple, list] = {}
         for a, nbs in self.adj.items():
             for b, stat in nbs.items():
                 traffic_map[a] = traffic_map.get(a, 0) + stat[0]
                 traffic_map[b] = traffic_map.get(b, 0) + stat[0]
-                length = math.dist(_center(a), _center(b))
-                und.setdefault(a, {})[b] = length
-                und.setdefault(b, {})[a] = length
+                ca, cb = _center(a), _center(b)
+                dx, dz = cb[0] - ca[0], cb[1] - ca[1]
+                length = math.hypot(dx, dz)
+                if length > 1e-6:
+                    u = (dx / length, dz / length)
+                    edge_dirs.setdefault(a, []).append(u)
+                    edge_dirs.setdefault(b, []).append(u)
+
+        cos_tol = math.cos(math.radians(WELD_ANGLE_DEG))
+
+        def direction_compatible(a, b) -> bool:
+            """True if some edge at ``a`` and some edge at ``b`` point along
+            roughly the same line (either direction — a two-way street's
+            opposing edges still count). Nodes with no edges of their own
+            (shouldn't happen, but be defensive) are never weldable."""
+            da, db = edge_dirs.get(a), edge_dirs.get(b)
+            if not da or not db:
+                return False
+            for ux, uz in da:
+                for vx, vz in db:
+                    if abs(ux * vx + uz * vz) >= cos_tol:
+                        return True
+            return False
 
         # Bucket nodes by 2D position (bucket size == WELD_RADIUS) so each
         # node only needs to check its 3x3 bucket neighbourhood, not every
@@ -471,28 +494,6 @@ class NavGraph:
             del bbox[rb]
             return True
 
-        def path_distance(start, targets: set) -> dict:
-            """Bounded Dijkstra over the undirected graph, stopping once the
-            travelled distance exceeds ``WELD_PATH_CUTOFF``. Returns the
-            reached subset of ``targets`` mapped to path length."""
-            found: dict = {}
-            dist = {start: 0.0}
-            pq = [(0.0, start)]
-            remaining = set(targets)
-            while pq and remaining:
-                d, n = heapq.heappop(pq)
-                if d > dist.get(n, math.inf) or d > WELD_PATH_CUTOFF:
-                    continue
-                if n in remaining:
-                    found[n] = d
-                    remaining.discard(n)
-                for nb, length in und.get(n, {}).items():
-                    nd = d + length
-                    if nd <= WELD_PATH_CUTOFF and nd < dist.get(nb, math.inf):
-                        dist[nb] = nd
-                        heapq.heappush(pq, (nd, nb))
-            return found
-
         r2 = WELD_RADIUS * WELD_RADIUS
         candidates: list = []
         for (bx, bz, cy), nodes in buckets.items():
@@ -502,28 +503,20 @@ class NavGraph:
                     neighbours.extend(buckets.get((bx + dx, bz + dz, cy), []))
             for a in nodes:
                 ax, az = _center(a)
-                close: dict = {}
                 for b in neighbours:
                     if b <= a:  # each unordered pair only once, regardless of bucket
                         continue
                     bx2, bz2 = _center(b)
                     d2 = (ax - bx2) ** 2 + (az - bz2) ** 2
-                    if d2 <= r2:
-                        close[b] = math.sqrt(d2)
-                if not close:
-                    continue
-                # Points reachable through the graph by roughly as direct a
-                # path as the straight line between them are the same strand
-                # (e.g. consecutive samples along a road, or around a curve)
-                # — leave those for the straight-run collapse. Only weld
-                # pairs that are spatially close but graph-far: a genuinely
-                # separate near-duplicate trace.
-                reached = path_distance(a, set(close))
-                for b, euclid in close.items():
-                    pd = reached.get(b)
-                    if pd is not None and pd <= WELD_PATH_SLACK * max(euclid, 0.1):
+                    if d2 > r2:
                         continue
-                    candidates.append((euclid, a, b))
+                    # Same heading (either direction) is what tells a
+                    # near-duplicate recording of one lane apart from a
+                    # genuinely different road that just happens to pass
+                    # close by — e.g. a crossing street at a junction.
+                    if not direction_compatible(a, b):
+                        continue
+                    candidates.append((math.sqrt(d2), a, b))
 
         # Nearest pairs first, so tight clusters form before a farther,
         # marginal candidate gets a chance to claim (and cap out) a cluster's
