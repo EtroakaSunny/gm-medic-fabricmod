@@ -13,6 +13,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from . import config, database, roster
+from .nav import nav
 from .nearest import compute_nearest, distance_to_medic
 from .state import safe_float, state
 
@@ -119,6 +120,7 @@ async def mod_ws(ws: WebSocket):
     finally:
         if username is not None:
             state.unregister_mod(ws)
+            nav.forget_track(username)
             await state.broadcast_admin({"type": "medic_offline", "username": username})
 
 
@@ -136,6 +138,7 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
 
     elif mtype == "DUTY_OFF":
         state.set_duty(username, False)
+        nav.forget_track(username)
         await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
         # Off duty now — hand over the active bank alarm (alarms target off-duty clients).
         alarm = state.active_alarm()
@@ -144,6 +147,14 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
 
     elif mtype == "LOCATION_UPDATE":
         if state.set_location(username, msg.get("x"), msg.get("y"), msg.get("z")):
+            # Street learning only trusts positions the client tagged as sitting
+            # in a car (hotbar vehicle item, helicopters excluded) — foot traffic
+            # through houses and heli flights must never become streets.
+            if msg.get("driving"):
+                nav.record(username, msg.get("x"), msg.get("y"), msg.get("z"),
+                           msg.get("timestamp") or int(time.time() * 1000))
+            else:
+                nav.forget_track(username)
             await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
 
     elif mtype == "ALARM_TRIGGERED":

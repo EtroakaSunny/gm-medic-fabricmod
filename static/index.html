@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GM-Medic Leitstelle</title>
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
     <!-- Login -->
@@ -24,11 +24,15 @@
     <div id="dash-view" class="dash-view hidden">
         <header class="topbar">
             <span class="brand">GM-Medic Leitstelle</span>
+            <nav class="tabs">
+                <button id="tab-main" class="tab active">Leitstelle</button>
+                <button id="tab-beta" class="tab">Navigation <span class="beta-badge">Beta</span></button>
+            </nav>
             <span id="conn-status" class="conn-status">verbinde…</span>
             <button id="logout-btn" class="ghost">Abmelden</button>
         </header>
 
-        <main class="grid">
+        <main id="main-view" class="grid">
             <section class="panel">
                 <h2>Sanitäter</h2>
                 <ul id="medic-list" class="list"></ul>
@@ -55,9 +59,35 @@
                 <ul id="call-list" class="list"></ul>
             </section>
         </main>
+
+        <main id="beta-view" class="beta-grid hidden">
+            <section class="panel">
+                <h2>Straßen-Navigation <span class="beta-badge">Beta</span></h2>
+                <p class="meta">Das Straßennetz wird automatisch aus den Fahrten der Sanitäter
+                    im Dienst gelernt (nur im Auto — Hubschrauber und Fußwege zählen nicht).</p>
+                <div id="nav-stats" class="nav-stats"></div>
+                <div class="nav-actions">
+                    <button id="nav-show-graph">Straßennetz anzeigen</button>
+                    <button id="nav-clear-route" class="ghost">Route löschen</button>
+                </div>
+                <p class="meta">Route: erst den Start, dann das Ziel auf der Karte anklicken.</p>
+                <p id="nav-route-info" class="nav-route-info"></p>
+            </section>
+
+            <section class="panel map-panel">
+                <h2>Karte</h2>
+                <div id="nav-map"></div>
+                <div class="legend">
+                    <span><i class="line slow"></i> langsam</span>
+                    <span><i class="line med"></i> mittel</span>
+                    <span><i class="line fast"></i> schnell</span>
+                    <span><i class="line route"></i> Route</span>
+                </div>
+            </section>
+        </main>
     </div>
 
     <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>

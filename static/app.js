@@ -228,14 +228,13 @@ let mapFitted = false;
 const medicMarkers = new Map(); // username -> L.CircleMarker
 const callMarkers = new Map();  // callId -> L.Marker
 
-// The map is optional: if it cannot start (e.g. Leaflet missing because a
+// Maps are optional: if one cannot start (e.g. Leaflet missing because a
 // stale cached page is in play), the dashboard must still work — never throw.
-function initMap() {
-    if (map) return;
+function createBlueMapMap(containerId) {
     if (typeof L === "undefined") {
-        document.getElementById("map").textContent =
+        document.getElementById(containerId).textContent =
             "Karte konnte nicht geladen werden — bitte Seite neu laden (Strg+F5).";
-        return;
+        return null;
     }
     try {
         const crs = L.extend({}, L.CRS.Simple, {
@@ -262,7 +261,7 @@ function initMap() {
             },
         });
 
-        map = L.map("map", {
+        const m = L.map(containerId, {
             crs,
             minZoom: 0,
             maxZoom: 3,          // zoom 3 upscales LOD-1 tiles 5× for close-ups
@@ -273,12 +272,20 @@ function initMap() {
             tileSize: 500,
             minNativeZoom: 0,
             maxNativeZoom: 2,
-        }).addTo(map);
-        map.setView([0, 0], 1);
-        document.getElementById("map-fit").addEventListener("click", () => fitMapToMarkers(true));
+        }).addTo(m);
+        m.setView([0, 0], 1);
+        return m;
     } catch (e) {
         console.error("Karte konnte nicht initialisiert werden:", e);
-        map = null;
+        return null;
+    }
+}
+
+function initMap() {
+    if (map) return;
+    map = createBlueMapMap("map");
+    if (map) {
+        document.getElementById("map-fit").addEventListener("click", () => fitMapToMarkers(true));
     }
 }
 
@@ -341,7 +348,137 @@ function fitMapToMarkers(animate) {
     map.fitBounds(L.featureGroup(layers).getBounds().pad(0.3), { maxZoom: 2, animate });
 }
 
-window.addEventListener("resize", () => { if (map) map.invalidateSize(); });
+window.addEventListener("resize", () => {
+    if (map) map.invalidateSize();
+    if (navMap) navMap.invalidateSize();
+});
+
+// --- Tabs ---
+
+const mainView = document.getElementById("main-view");
+const betaView = document.getElementById("beta-view");
+
+function showTab(which) {
+    const beta = which === "beta";
+    mainView.classList.toggle("hidden", beta);
+    betaView.classList.toggle("hidden", !beta);
+    document.getElementById("tab-main").classList.toggle("active", !beta);
+    document.getElementById("tab-beta").classList.toggle("active", beta);
+    if (beta) initNavView();
+    requestAnimationFrame(() => {
+        if (beta && navMap) navMap.invalidateSize();
+        if (!beta && map) map.invalidateSize();
+    });
+}
+document.getElementById("tab-main").addEventListener("click", () => showTab("main"));
+document.getElementById("tab-beta").addEventListener("click", () => showTab("beta"));
+
+// --- Beta: navigation (street network learned from drive traces) ---
+
+let navMap = null;
+let navGraphLayer = null;
+let navRouteLayer = null;
+let navStart = null; // {x, z} — first click; second click routes
+
+function initNavView() {
+    if (navMap) { refreshNavStats(); return; }
+    navMap = createBlueMapMap("nav-map");
+    if (!navMap) return;
+    navMap.on("click", onNavMapClick);
+    document.getElementById("nav-show-graph").addEventListener("click", loadNavGraph);
+    document.getElementById("nav-clear-route").addEventListener("click", clearNavRoute);
+    refreshNavStats();
+}
+
+async function refreshNavStats() {
+    try {
+        const res = await api("/api/nav/stats");
+        const s = await res.json();
+        document.getElementById("nav-stats").innerHTML =
+            `<div class="row"><span class="meta">Knoten</span><span>${s.nodes}</span></div>` +
+            `<div class="row"><span class="meta">Straßen-Segmente</span><span>${s.edges}</span></div>` +
+            `<div class="row"><span class="meta">Erfasste Fahrten-Segmente</span><span>${s.segments}</span></div>` +
+            `<div class="row"><span class="meta">Aktive Aufzeichnungen</span><span>${s.activeTracks}</span></div>`;
+    } catch {}
+}
+
+async function loadNavGraph() {
+    if (!navMap) return;
+    setNavInfo("Lade Straßennetz …");
+    try {
+        const res = await api("/api/nav/graph?min_count=1");
+        const data = await res.json();
+        if (navGraphLayer) navGraphLayer.remove();
+        // One multi-polyline per speed bucket keeps this fast even for
+        // tens of thousands of segments (3 SVG paths in total).
+        const slow = [], mid = [], fast = [];
+        for (const [x1, z1, x2, z2, _count, speed] of data.edges) {
+            const seg = [blockLatLng(x1, z1), blockLatLng(x2, z2)];
+            (speed < 9 ? slow : speed < 16 ? mid : fast).push(seg);
+        }
+        navGraphLayer = L.layerGroup([
+            L.polyline(slow, { color: "#8b93a1", weight: 2, opacity: 0.75, interactive: false }),
+            L.polyline(mid,  { color: "#e6943c", weight: 2, opacity: 0.85, interactive: false }),
+            L.polyline(fast, { color: "#46c46b", weight: 2, opacity: 0.85, interactive: false }),
+        ]).addTo(navMap);
+        setNavInfo(`Straßennetz: ${data.edges.length} Segmente.`);
+        refreshNavStats();
+        if (data.edges.length && !navRouteLayer) {
+            const b = L.latLngBounds(data.edges.map(e => blockLatLng(e[0], e[1])));
+            navMap.fitBounds(b.pad(0.2), { maxZoom: 2 });
+        }
+    } catch {
+        setNavInfo("Straßennetz konnte nicht geladen werden.");
+    }
+}
+
+function onNavMapClick(e) {
+    const x = e.latlng.lng, z = -e.latlng.lat;
+    if (navStart === null) {
+        clearNavRoute();
+        navStart = { x, z };
+        navRouteLayer = L.layerGroup([
+            L.circleMarker(blockLatLng(x, z), { radius: 7, weight: 2, color: "#10141a", fillColor: "#46c46b", fillOpacity: 1 }),
+        ]).addTo(navMap);
+        setNavInfo(`Start gesetzt (X ${Math.round(x)}, Z ${Math.round(z)}) — jetzt das Ziel anklicken.`);
+    } else {
+        requestNavRoute(navStart, { x, z });
+        navStart = null;
+    }
+}
+
+async function requestNavRoute(from, to) {
+    setNavInfo("Berechne Route …");
+    navRouteLayer.addLayer(
+        L.circleMarker(blockLatLng(to.x, to.z), { radius: 7, weight: 2, color: "#10141a", fillColor: "#e5534b", fillOpacity: 1 })
+    );
+    try {
+        const q = `fromX=${from.x.toFixed(1)}&fromZ=${from.z.toFixed(1)}&toX=${to.x.toFixed(1)}&toZ=${to.z.toFixed(1)}`;
+        const res = await api(`/api/nav/route?${q}`);
+        if (!res.ok) {
+            const detail = (await res.json().catch(() => null))?.detail;
+            setNavInfo(detail || "Keine Route gefunden.");
+            return;
+        }
+        const r = await res.json();
+        navRouteLayer.addLayer(L.polyline(r.path.map(p => blockLatLng(p[0], p[1])),
+            { color: "#55b1f0", weight: 4, opacity: 0.9 }));
+        const mins = Math.floor(r.timeSeconds / 60), secs = Math.round(r.timeSeconds % 60);
+        setNavInfo(`Route: ${Math.round(r.distanceBlocks)} Blöcke, ca. ${mins}:${String(secs).padStart(2, "0")} min Fahrzeit.`);
+    } catch {
+        setNavInfo("Routenberechnung fehlgeschlagen.");
+    }
+}
+
+function clearNavRoute() {
+    navStart = null;
+    if (navRouteLayer) { navRouteLayer.remove(); navRouteLayer = null; }
+    setNavInfo("");
+}
+
+function setNavInfo(text) {
+    document.getElementById("nav-route-info").textContent = text;
+}
 
 // --- Utils ---
 

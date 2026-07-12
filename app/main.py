@@ -1,4 +1,5 @@
 """FastAPI application wiring: routers, static GUI, and startup bootstrap."""
+import asyncio
 import logging
 import os
 import secrets
@@ -9,7 +10,9 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, database
 from .api_admin import router as api_router
+from .api_nav import router as nav_router
 from .map_proxy import router as map_router
+from .nav import nav
 from .security import hash_password
 from .ws_admin import router as admin_ws_router
 from .ws_mod import router as mod_ws_router
@@ -50,8 +53,12 @@ def _bootstrap_admin() -> None:
 async def lifespan(app: FastAPI):
     database.init_db()
     _bootstrap_admin()
+    nav.load()
+    autosave = asyncio.create_task(nav.autosave_loop())
     log.info("GM-Medic server ready on %s:%s", config.HOST, config.PORT)
     yield
+    autosave.cancel()
+    nav.save()
 
 
 app = FastAPI(title="GM-Medic Server", lifespan=lifespan)
@@ -70,6 +77,7 @@ async def gui_cache_control(request, call_next):
 
 # REST + WebSocket routes are registered before the static mount so they win.
 app.include_router(api_router)
+app.include_router(nav_router)
 app.include_router(mod_ws_router)
 app.include_router(admin_ws_router)
 app.include_router(map_router)

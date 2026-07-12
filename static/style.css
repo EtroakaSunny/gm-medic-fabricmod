@@ -75,6 +75,23 @@ button.ghost { background: transparent; border: 1px solid var(--border); color: 
     border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; font-size: 17px; }
+.tabs { display: flex; gap: 6px; }
+.tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
+.beta-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 20px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .5px;
+    background: rgba(85,177,240,.18); color: #55b1f0;
+    vertical-align: middle;
+}
 .conn-status { color: var(--muted); font-size: 13px; margin-left: auto; }
 .conn-status.ok { color: var(--accent); }
 .conn-status.bad { color: var(--danger); }
@@ -121,7 +138,25 @@ button.ghost { background: transparent; border: 1px solid var(--border); color: 
 .add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
 .map-panel { min-height: 0; }
-#map { flex: 1; width: 100%; background: #0e1014; border-radius: 8px; border: 1px solid var(--border); }
+#map, #nav-map { flex: 1; width: 100%; background: #0e1014; border-radius: 8px; border: 1px solid var(--border); }
+
+/* --- Beta: navigation --- */
+.beta-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 14px;
+    padding: 14px;
+    min-height: 0;
+}
+.nav-stats { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 13px; }
+.nav-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.nav-route-info { font-size: 13px; min-height: 18px; margin-top: 6px; }
+.legend .line { width: 16px; height: 3px; border-radius: 2px; }
+.legend .line.slow { background: #8b93a1; }
+.legend .line.med { background: #e6943c; }
+.legend .line.fast { background: #46c46b; }
+.legend .line.route { background: #55b1f0; height: 4px; }
 
 /* Leaflet overrides for the dark panel */
 .leaflet-container { background: #0e1014; font: inherit; }

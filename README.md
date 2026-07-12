@@ -39,6 +39,7 @@ for the full walkthrough and the standalone (own Caddy) alternative.
 | `GM_ROSTER_CACHE_SECONDS` | `60` | Roster cache lifetime. |
 | `GM_BLUEMAP_URL` | `http://map.germanminer.de:2086` | Public BlueMap proxied for the GUI's live map. |
 | `GM_BLUEMAP_CACHE_SECONDS` | `300` | Tile/settings cache lifetime (live data: 2 s). |
+| `GM_NAV_MIN_SPEED` | `3.0` | Blocks/s below which a driving sample is not learned as street (see Beta navigation). |
 
 ## Endpoints
 
@@ -74,6 +75,9 @@ Two ways to get approved; both require the first frame to be
 - `DUTY_ON` re-sends `OPEN_CALLS` (calls may have arrived while off duty).
 - Only **on-duty** medics are position-tracked: `LOCATION_UPDATE` from an
   off-duty client is ignored, and `DUTY_OFF` drops the stored position.
+  Each update carries a `driving` flag, true while the client detects the
+  player sitting in a car (vehicle control item in the hotbar; helicopters
+  carry a `Helikopter-Menü` instead and are excluded).
 - Every call mutation reported by one client (`CALL_NEW`, `CALL_ASSIGNED`,
   `CALL_RESOLVED`, `CALL_REJECTED`) is fanned out to all other connected mod
   clients as `CALL_SYNC`, and to admin GUIs as `call_update`.
@@ -87,6 +91,29 @@ Two ways to get approved; both require the first frame to be
   `ALARM_ENDED` clears it and notifies all clients. Newly connected clients and
   clients going off duty receive the active alarm immediately; a 30-minute
   timeout drops alarms whose end message was missed.
+
+## Beta: street navigation
+
+The GUI's **Navigation** tab (beta) learns GermanMiner's street network from
+the medics' own drives — no block data, no extra client work. On-duty
+`LOCATION_UPDATE`s tagged `driving: true` (in a car; helicopters and foot
+traffic never qualify) are joined into movement segments, rasterised onto a
+4-block grid and stored as **directed** edges with traversal count and average
+speed (`app/nav.py`, persisted to `data/nav-graph.json`, autosaved every
+5 min). Filters keep the graph clean: segments slower than
+`GM_NAV_MIN_SPEED`, faster than 40 blocks/s (teleport), with >12 blocks
+vertical jump or >10 s gaps are dropped, and the track breaks on duty-off or
+disconnect.
+
+Routing (`GET /api/nav/route?fromX=&fromZ=&toX=&toZ=`) snaps both points to
+the nearest learned node (≤96 blocks) and runs Dijkstra over travel time
+(edge length ÷ learned speed), preferring edges driven at least twice and
+relaxing to once when the strict graph is not connected yet. `GET
+/api/nav/graph` returns the display edges, `GET /api/nav/stats` the counters;
+all three require an admin JWT. In the GUI: open the Navigation tab, click
+"Straßennetz anzeigen" to see what has been learned (grey/orange/green by
+speed), then click start and destination on the map to get a route with
+distance and estimated drive time.
 
 ## Live map (BlueMap proxy)
 
