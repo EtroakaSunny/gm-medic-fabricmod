@@ -79,13 +79,14 @@ public final class OutboundMessages {
         return obj.toString();
     }
 
-    public static String locationUpdate(String username, double x, double y, double z) {
+    public static String locationUpdate(String username, double x, double y, double z, boolean driving) {
         JsonObject obj = new JsonObject();
         obj.addProperty("type", "LOCATION_UPDATE");
         obj.addProperty("username", username);
         obj.addProperty("x", x);
         obj.addProperty("y", y);
         obj.addProperty("z", z);
+        obj.addProperty("driving", driving);
         obj.addProperty("timestamp", System.currentTimeMillis());
         return obj.toString();
     }

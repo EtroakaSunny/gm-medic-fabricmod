@@ -68,6 +68,27 @@ public final class VehicleAutomation {
         return forceSneak;
     }
 
+    /**
+     * True while the player sits in a car: riding an entity with the vehicle control item
+     * ({@code Gangwahlhebel}) in the hotbar. Helicopters carry a {@code Helikopter-Menü}
+     * instead and are excluded — their flight paths are not streets. Used to tag
+     * location updates so the server only learns the street network from car traces.
+     */
+    public static boolean isDrivingCar(MinecraftClient client) {
+        ClientPlayerEntity player = client.player;
+        if (player == null || !player.hasVehicle()) return false;
+        PlayerInventory inv = player.getInventory();
+        boolean hasCarItem = false;
+        for (int i = 0; i < PlayerInventory.getHotbarSize(); i++) {
+            ItemStack stack = inv.getStack(i);
+            if (stack.isEmpty()) continue;
+            String name = stripColorCodes(stack.getName().getString());
+            if (name.equalsIgnoreCase(HELICOPTER_ITEM_NAME)) return false;
+            if (name.equals(GEAR_ITEM_NAME)) hasCarItem = true;
+        }
+        return hasCarItem;
+    }
+
     public static void tick(MinecraftClient client) {
         if (client.player == null) {
             reset();
