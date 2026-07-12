@@ -33,3 +33,26 @@ def compute_nearest(call: dict, online: dict):
     if best_name is None:
         return None, None
     return best_name, round(best_dist, 1)
+
+
+def distance_to_medic(call: dict, online: dict, medic_name: str, max_blocks: float | None = None):
+    """Distance in blocks (XZ) from `medic_name`'s last known position to the call.
+
+    Returns None if the medic or the call has no known position, or if
+    `max_blocks` is given and the distance exceeds it.
+    """
+    if not medic_name:
+        return None
+    cx, cz = call.get("x"), call.get("z")
+    if cx is None or cz is None or not math.isfinite(cx) or not math.isfinite(cz):
+        return None
+    info = online.get(medic_name)
+    if info is None:
+        return None
+    ix, iz = info.get("x"), info.get("z")
+    if ix is None or iz is None:
+        return None
+    dist = math.hypot(ix - cx, iz - cz)
+    if max_blocks is not None and dist > max_blocks:
+        return None
+    return round(dist, 1)

@@ -34,6 +34,11 @@ ROSTER_URL = os.environ.get(
 )
 ROSTER_CACHE_SECONDS = int(os.environ.get("GM_ROSTER_CACHE_SECONDS", "60"))
 
+# When a call is assigned, if the medic's last known position is within this
+# many blocks of the call, the assignment broadcast notes the medic is
+# already nearby (see ws_mod.CALL_ASSIGNED).
+MEDIC_NEARBY_THRESHOLD_BLOCKS = float(os.environ.get("GM_MEDIC_NEARBY_THRESHOLD_BLOCKS", "150"))
+
 # Public GermanMiner BlueMap used as the admin GUI's map background. The GUI
 # fetches it through this server (/map/...) because the map host is HTTP-only
 # and sends no CORS headers. Cache lifetime applies to tiles and settings;

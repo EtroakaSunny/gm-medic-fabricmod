@@ -13,7 +13,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from . import config, database, roster
-from .nearest import compute_nearest
+from .nearest import compute_nearest, distance_to_medic
 from .state import safe_float, state
 
 router = APIRouter()
@@ -200,7 +200,14 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
     elif mtype == "CALL_ASSIGNED":
         call = state.get_call(msg.get("callId"))
         if call is not None:
-            call["assignedMedic"] = msg.get("medicName")
+            medic_name = msg.get("medicName")
+            call["assignedMedic"] = medic_name
+            # Only set when the medic's last known position is close enough to
+            # be worth announcing; None otherwise so clients don't hold onto a
+            # stale nearby-flag from a previous assignment.
+            call["assignedMedicNearbyDistance"] = distance_to_medic(
+                call, state.online, medic_name, config.MEDIC_NEARBY_THRESHOLD_BLOCKS
+            )
             await state.broadcast_admin({"type": "call_update", "call": call})
             await state.broadcast_mods({"type": "CALL_SYNC", "call": call}, exclude=ws)
 
