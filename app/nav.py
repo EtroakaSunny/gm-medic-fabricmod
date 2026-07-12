@@ -438,16 +438,23 @@ class NavGraph:
         cos_tol = math.cos(math.radians(WELD_ANGLE_DEG))
 
         def direction_compatible(a, b) -> bool:
-            """True if some edge at ``a`` and some edge at ``b`` point along
-            roughly the same line (either direction — a two-way street's
-            opposing edges still count). Nodes with no edges of their own
-            (shouldn't happen, but be defensive) are never weldable."""
+            """True if some edge at ``a`` and some edge at ``b`` point the
+            same way (not just the same line — two one-way streets running
+            opposite directions a few blocks apart, e.g. a couplet pair, are
+            a different road each and must not weld just because they're
+            antiparallel and close). An ordinary two-way street still
+            matches fine: a node on one already carries both signs from its
+            own pair of directed edges to its neighbour, so the opposite
+            sign is available to match against regardless of which way this
+            particular recording happened to run. Nodes with no edges of
+            their own (shouldn't happen, but be defensive) are never
+            weldable."""
             da, db = edge_dirs.get(a), edge_dirs.get(b)
             if not da or not db:
                 return False
             for ux, uz in da:
                 for vx, vz in db:
-                    if abs(ux * vx + uz * vz) >= cos_tol:
+                    if ux * vx + uz * vz >= cos_tol:
                         return True
             return False
 
