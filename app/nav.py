@@ -32,7 +32,10 @@ GRID = 4                  # blocks per grid cell (streets are ~5-7 wide)
 # Vertical layer height. Separates a tunnel from the road above it (they are
 # typically 6+ blocks apart) without splitting ordinary slopes into layers.
 Y_LAYER = 10
-MAX_SPEED = 40.0          # blocks/s — anything faster is a teleport/respawn
+# blocks/s — anything faster is a teleport/respawn, not driving. Medics'
+# vehicles can legitimately be quite fast (nitro/boosted cars, boats), so
+# this sits well above normal traffic speed and only catches genuine warps.
+MAX_SPEED = float(os.environ.get("GM_NAV_MAX_SPEED", "90.0"))
 # The client only tags samples as ``driving`` while seated in a car (hotbar
 # vehicle item; helicopters excluded), so this is just a sanity floor against
 # creeping/parking noise — not the house/foot-traffic filter anymore.
@@ -48,6 +51,14 @@ MAX_EDGES = 250_000       # prune threshold
 EDIT_COUNT = 5
 PRUNE_AGE_MS = 7 * 24 * 3600 * 1000
 
+# Consolidation: periodically collapse straight runs of raster-grid edges
+# (the "staircase" artefacts from sampling onto a GRID-block cell) into fewer,
+# longer edges. A chain node is collapsed only while the path through it
+# deviates less than this from straight, so real turns and intersections
+# keep their shape.
+MERGE_ANGLE_DEG = 25.0
+SIMPLIFY_INTERVAL_SECONDS = float(os.environ.get("GM_NAV_SIMPLIFY_HOURS", "24")) * 3600
+
 GRAPH_PATH = config.DATA_DIR / "nav-graph.json"
 AUTOSAVE_SECONDS = 300
 
@@ -59,6 +70,17 @@ def _cell(x: float, z: float, y: float) -> tuple[int, int, int]:
 def _center(cell: tuple[int, int, int]) -> tuple[float, float]:
     """2D centre of a cell — the vertical layer only disambiguates nodes."""
     return (cell[0] * GRID + GRID / 2, cell[1] * GRID + GRID / 2)
+
+
+def _bend_deg(p: tuple[float, float], n: tuple[float, float], q: tuple[float, float]) -> float:
+    """Angle (degrees) the path p -> n -> q bends away from a straight line."""
+    v1x, v1z = n[0] - p[0], n[1] - p[1]
+    v2x, v2z = q[0] - n[0], q[1] - n[1]
+    len1, len2 = math.hypot(v1x, v1z), math.hypot(v2x, v2z)
+    if len1 < 1e-6 or len2 < 1e-6:
+        return 0.0
+    cos_a = max(-1.0, min(1.0, (v1x * v2x + v1z * v2z) / (len1 * len2)))
+    return math.degrees(math.acos(cos_a))
 
 
 class NavGraph:
@@ -341,6 +363,80 @@ class NavGraph:
             out.append([x1, z1, x2, z2, count, round(speed_sum / count, 1)])
         return out
 
+    # --- Consolidation ---
+
+    def _add_or_merge_edge(self, a, b, stat: list) -> None:
+        edges = self.adj.setdefault(a, {})
+        cur = edges.get(b)
+        if cur is None:
+            edges[b] = stat
+            self.edge_count += 1
+        else:
+            cur[0] += stat[0]
+            cur[1] += stat[1]
+            cur[2] = max(cur[2], stat[2])
+
+    def simplify(self) -> int:
+        """Collapse straight runs of pass-through nodes into fewer, longer
+        edges — the "staircase" that ``GRID``-sized rasterisation leaves
+        along an otherwise straight road. A node qualifies when it has
+        exactly two neighbours ``p``/``q`` connected both ways (a genuine
+        two-way pass-through, not an intersection) and the path p -> n -> q
+        bends less than ``MERGE_ANGLE_DEG``; it is replaced by direct p<->q
+        edges whose speed is derived from the combined travel time, so
+        routing distance/duration is unchanged. Intersections, dead ends and
+        real turns are left alone. Returns the number of nodes collapsed.
+        """
+        removed_nodes = 0
+        changed = True
+        passes = 0
+        while changed and passes < 64:
+            changed = False
+            passes += 1
+            for n in list(self.adj.keys()):
+                nbs = self.adj.get(n)
+                if nbs is None or len(nbs) != 2:
+                    continue
+                (p, stat_np), (q, stat_nq) = list(nbs.items())
+                if p == q:
+                    continue
+                stat_pn = self.adj.get(p, {}).get(n)
+                stat_qn = self.adj.get(q, {}).get(n)
+                if stat_pn is None or stat_qn is None:
+                    continue  # not a symmetric two-way pass-through
+
+                cp, cn, cq = _center(p), _center(n), _center(q)
+                if _bend_deg(cp, cn, cq) > MERGE_ANGLE_DEG:
+                    continue
+
+                len_pn = math.dist(cp, cn)
+                len_nq = math.dist(cn, cq)
+                total_len = len_pn + len_nq
+
+                def _shortcut(stat_first, len_first, stat_second, len_second) -> list:
+                    speed_first = max(stat_first[1] / stat_first[0], 0.1)
+                    speed_second = max(stat_second[1] / stat_second[0], 0.1)
+                    travel_time = len_first / speed_first + len_second / speed_second
+                    avg_speed = total_len / travel_time if travel_time > 0 else speed_first
+                    count = min(stat_first[0], stat_second[0])
+                    return [count, avg_speed * count, max(stat_first[2], stat_second[2])]
+
+                self._add_or_merge_edge(p, q, _shortcut(stat_pn, len_pn, stat_nq, len_nq))
+                self._add_or_merge_edge(q, p, _shortcut(stat_qn, len_nq, stat_np, len_pn))
+
+                del self.adj[p][n]
+                del self.adj[q][n]
+                del self.adj[n]
+                self.edge_count -= 4
+
+                removed_nodes += 1
+                changed = True
+
+        if removed_nodes:
+            self._dirty = True
+            log.info("Nav graph simplified: %d pass-through nodes collapsed", removed_nodes)
+        return removed_nodes
+
     # --- Persistence ---
 
     def _prune(self) -> None:
@@ -405,6 +501,15 @@ class NavGraph:
                 await asyncio.to_thread(self.save)
             except Exception as e:
                 log.warning("Nav graph autosave failed: %s", e)
+
+    async def simplify_loop(self) -> None:
+        while True:
+            await asyncio.sleep(SIMPLIFY_INTERVAL_SECONDS)
+            try:
+                await asyncio.to_thread(self.simplify)
+                await asyncio.to_thread(self.save)
+            except Exception as e:
+                log.warning("Nav graph simplification failed: %s", e)
 
 
 nav = NavGraph()

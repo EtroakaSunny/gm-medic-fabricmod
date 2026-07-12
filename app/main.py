@@ -56,9 +56,11 @@ async def lifespan(app: FastAPI):
     _bootstrap_admin()
     nav.load()
     autosave = asyncio.create_task(nav.autosave_loop())
+    simplify = asyncio.create_task(nav.simplify_loop())
     log.info("GM-Medic server ready on %s:%s", config.HOST, config.PORT)
     yield
     autosave.cancel()
+    simplify.cancel()
     nav.save()
 
 

@@ -40,6 +40,8 @@ for the full walkthrough and the standalone (own Caddy) alternative.
 | `GM_BLUEMAP_URL` | `http://map.germanminer.de:2086` | Public BlueMap proxied for the GUI's live map. |
 | `GM_BLUEMAP_CACHE_SECONDS` | `300` | Tile/settings cache lifetime (live data: 2 s). |
 | `GM_NAV_MIN_SPEED` | `3.0` | Blocks/s below which a driving sample is not learned as street (see Beta navigation). |
+| `GM_NAV_MAX_SPEED` | `90.0` | Blocks/s above which a sample is treated as a teleport/respawn and dropped, not a fast medic (see Beta navigation). |
+| `GM_NAV_SIMPLIFY_HOURS` | `24` | How often the learned street graph is consolidated into smoother, longer edges (see Beta navigation). |
 
 ## Endpoints
 
@@ -129,9 +131,17 @@ speed (`app/nav.py`, persisted to `data/nav-graph.json`, autosaved every
 5 min). Grid cells also carry a coarse 10-block vertical layer, so a tunnel
 and the road above it stay separate roads (no phantom junction where they
 cross) while ramps still connect the layers. Filters keep the graph clean: segments slower than
-`GM_NAV_MIN_SPEED`, faster than 40 blocks/s (teleport), with >12 blocks
-vertical jump or >10 s gaps are dropped, and the track breaks on duty-off or
+`GM_NAV_MIN_SPEED`, faster than `GM_NAV_MAX_SPEED` (default 90 blocks/s —
+above normal medic vehicle speed, so boosted/fast travel is still recorded
+and only genuine teleports/respawns are dropped), with >12 blocks vertical
+jump or >10 s gaps are dropped, and the track breaks on duty-off or
 disconnect.
+
+Every `GM_NAV_SIMPLIFY_HOURS` (default 24h) the graph is consolidated: chains
+of pass-through nodes left by the 4-block rasterisation are collapsed into
+fewer, longer edges wherever the road runs close to straight, smoothing the
+staircase without changing distance or drive-time estimates. Intersections
+and real turns are never touched.
 
 Routing (`GET /api/nav/route?fromX=&fromZ=&toX=&toZ=`) snaps both points to
 the nearest learned node (≤96 blocks) and runs Dijkstra over travel time
