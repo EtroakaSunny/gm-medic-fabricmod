@@ -13,6 +13,31 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+    permissions: list[str] = []
+
+
+class UserPatch(BaseModel):
+    role: str | None = None
+    permissions: list[str] | None = None
+    password: str | None = None
+
+
+class UserOut(BaseModel):
+    username: str
+    role: str
+    permissions: list[str]
+    created_at: int
+
+
 class MedicCreate(BaseModel):
     username: str
     display_name: str | None = None

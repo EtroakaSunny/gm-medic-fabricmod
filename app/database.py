@@ -1,11 +1,13 @@
 """SQLite persistence layer.
 
-Stores admin accounts, the medic allow-list, and bound TOFU tokens.
-Live state (positions, active calls) is kept in memory — see ``state.py``.
+Stores GUI user accounts (with role and view permissions), the medic
+allow-list, and bound TOFU tokens. Live state (positions, active calls) is
+kept in memory — see ``state.py``.
 
 A fresh connection is opened per operation; SQLite handles this cheaply and
 it avoids cross-thread connection-sharing issues.
 """
+import json
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -13,10 +15,11 @@ from contextlib import contextmanager
 from . import config
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS admins (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT UNIQUE NOT NULL,
+CREATE TABLE IF NOT EXISTS users (
+    username      TEXT PRIMARY KEY,
     password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'user',
+    permissions   TEXT NOT NULL DEFAULT '[]',
     created_at    INTEGER NOT NULL
 );
 
@@ -51,42 +54,97 @@ def _conn():
 def init_db() -> None:
     with _conn() as conn:
         conn.executescript(_SCHEMA)
+        # Accounts used to live in an "admins" table without roles — migrate
+        # them once as full admins, then drop the legacy table.
+        legacy = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='admins'"
+        ).fetchone()
+        if legacy:
+            conn.execute(
+                "INSERT OR IGNORE INTO users (username, password_hash, role, permissions, created_at) "
+                "SELECT username, password_hash, 'admin', '[]', created_at FROM admins"
+            )
+            conn.execute("DROP TABLE admins")
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-# --- Admin accounts ---
+# --- GUI user accounts ---
 
 def count_admins() -> int:
     with _conn() as conn:
-        return conn.execute("SELECT COUNT(*) AS c FROM admins").fetchone()["c"]
-
-
-def create_admin(username: str, password_hash: str) -> None:
-    with _conn() as conn:
-        conn.execute(
-            "INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)",
-            (username, password_hash, _now_ms()),
-        )
+        return conn.execute(
+            "SELECT COUNT(*) AS c FROM users WHERE role = 'admin'"
+        ).fetchone()["c"]
 
 
 def upsert_admin(username: str, password_hash: str) -> None:
-    """Create the admin, or reset its password if it already exists."""
+    """Bootstrap: create the admin, or reset its password and re-assert the role."""
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash",
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?) "
+            "ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash, role = 'admin'",
             (username, password_hash, _now_ms()),
         )
 
 
-def get_admin(username: str) -> sqlite3.Row | None:
+def get_user(username: str) -> sqlite3.Row | None:
     with _conn() as conn:
         return conn.execute(
-            "SELECT * FROM admins WHERE username = ?", (username,)
+            "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
+
+
+def list_users() -> list[sqlite3.Row]:
+    with _conn() as conn:
+        return conn.execute(
+            "SELECT username, role, permissions, created_at FROM users ORDER BY username"
+        ).fetchall()
+
+
+def create_user(username: str, password_hash: str, role: str, permissions: list[str]) -> bool:
+    """Returns False if the username is already taken."""
+    with _conn() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role, permissions, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (username, password_hash, role, json.dumps(sorted(set(permissions))), _now_ms()),
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def update_user(username: str, role: str | None = None,
+                permissions: list[str] | None = None) -> bool:
+    with _conn() as conn:
+        if role is not None:
+            conn.execute("UPDATE users SET role = ? WHERE username = ?", (role, username))
+        if permissions is not None:
+            conn.execute(
+                "UPDATE users SET permissions = ? WHERE username = ?",
+                (json.dumps(sorted(set(permissions))), username),
+            )
+        return conn.execute(
+            "SELECT 1 FROM users WHERE username = ?", (username,)
+        ).fetchone() is not None
+
+
+def set_user_password(username: str, password_hash: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (password_hash, username),
+        )
+
+
+def delete_user(username: str) -> bool:
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        return cur.rowcount > 0
 
 
 # --- Medic allow-list ---

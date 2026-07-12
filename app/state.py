@@ -28,6 +28,16 @@ def _now_ms() -> int:
 # Safety net: never keep a bank alarm active longer than this.
 ALARM_MAX_AGE_MS = 30 * 60 * 1000
 
+# Which view permission a GUI connection needs to receive each update type.
+# The map draws medics AND calls, so "map" qualifies for both feeds.
+_GUI_MSG_PERMS = {
+    "medic_update": {"medics", "map"},
+    "medic_offline": {"medics", "map"},
+    "call_update": {"calls", "map"},
+    "call_removed": {"calls", "map"},
+    "alarm_update": {"calls", "map"},
+}
+
 
 class LiveState:
     def __init__(self) -> None:
@@ -39,8 +49,8 @@ class LiveState:
         self.alarm: dict | None = None
         # mod websocket -> username
         self.mod_ws: dict[WebSocket, str] = {}
-        # connected admin GUI sockets
-        self.admin_ws: set[WebSocket] = set()
+        # connected GUI sockets -> that account's view-permission set
+        self.admin_ws: dict[WebSocket, set] = {}
 
     # --- Mod connection registry ---
 
@@ -116,34 +126,42 @@ class LiveState:
             "last_seen": info.get("last_seen"),
         }
 
-    def snapshot(self) -> dict:
+    def snapshot(self, permissions: set | None = None) -> dict:
+        """Full state for one GUI connection, filtered by its permissions
+        (None = everything)."""
+        def allowed(views: set) -> bool:
+            return permissions is None or bool(permissions & views)
+
         return {
             "type": "snapshot",
-            "medics": [self.medic_view(u) for u in self.online],
-            "calls": list(self.calls.values()),
-            "alarm": self.active_alarm(),
+            "medics": [self.medic_view(u) for u in self.online] if allowed({"medics", "map"}) else [],
+            "calls": list(self.calls.values()) if allowed({"calls", "map"}) else [],
+            "alarm": self.active_alarm() if allowed({"calls", "map"}) else None,
         }
 
-    # --- Admin broadcast ---
+    # --- GUI broadcast ---
 
-    def register_admin(self, ws: WebSocket) -> None:
-        self.admin_ws.add(ws)
+    def register_admin(self, ws: WebSocket, permissions: set) -> None:
+        self.admin_ws[ws] = set(permissions)
 
     def unregister_admin(self, ws: WebSocket) -> None:
-        self.admin_ws.discard(ws)
+        self.admin_ws.pop(ws, None)
 
     async def broadcast_admin(self, message: dict) -> None:
         if not self.admin_ws:
             return
+        required = _GUI_MSG_PERMS.get(message.get("type"))
         payload = json.dumps(message)
         dead = []
-        for ws in list(self.admin_ws):
+        for ws, perms in list(self.admin_ws.items()):
+            if required is not None and not (perms & required):
+                continue
             try:
                 await ws.send_text(payload)
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self.admin_ws.discard(ws)
+            self.admin_ws.pop(ws, None)
 
     async def broadcast_mods(self, message: dict, exclude: WebSocket | None = None) -> None:
         """Fan a message out to all connected mod clients (optionally minus the sender)."""

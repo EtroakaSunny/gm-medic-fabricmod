@@ -15,16 +15,18 @@ router = APIRouter()
 
 @router.websocket("/ws/admin")
 async def admin_ws(ws: WebSocket, token: str | None = None):
-    admin = verify_ws_token(token)
-    if admin is None:
+    user = verify_ws_token(token)
+    if user is None:
         await ws.close(code=1008)
         return
 
     await ws.accept()
-    state.register_admin(ws)
+    # The feed is filtered by the account's view permissions (see state.py);
+    # they are fixed for the lifetime of the connection.
+    state.register_admin(ws, user["permissions"])
     try:
         # Send the full current state immediately on connect.
-        await ws.send_text(json.dumps(state.snapshot()))
+        await ws.send_text(json.dumps(state.snapshot(user["permissions"])))
         while True:
             # No inbound messages expected; keep the socket draining.
             await ws.receive_text()

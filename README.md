@@ -46,10 +46,36 @@ for the full walkthrough and the standalone (own Caddy) alternative.
 | Path | What |
 |------|------|
 | `WS /api` (alias `WS /ws`) | Mod clients. `/api` matches the mod's default URL. |
-| `WS /ws/admin?token=<jwt>` | Admin GUI live feed (snapshot + updates). |
-| `REST /api/...` | Admin REST (login, medic allow-list, tokens, calls, online). |
+| `WS /ws/admin?token=<jwt>` | GUI live feed (snapshot + updates, filtered by permissions). |
+| `REST /api/...` | GUI REST (login, account, users, medic allow-list, tokens, calls, online). |
 | `GET /map/...` | Read-only proxy for the public GermanMiner BlueMap (see below). |
-| `/` | Static admin GUI. |
+| `/` | Static GUI. |
+
+## GUI accounts, roles and permissions
+
+The GUI has its own accounts (`users` table; legacy `admins` tables are
+migrated automatically as admins). Two roles:
+
+- **admin** — sees everything and additionally manages medics (allow-list,
+  token revocation) and users (create/delete, role, permissions, password
+  reset). The bootstrap account from `GM_ADMIN_USER`/`GM_ADMIN_PASSWORD` is
+  an admin.
+- **user** — read-only viewer. What they see is picked per account from the
+  view permissions `medics` (roster panel), `map` (live map), `calls`
+  (call list), `nav` (beta navigation tab).
+
+Permissions are enforced server-side: REST routes check them per request and
+the `/ws/admin` feed only carries updates the account may see (the `map`
+permission implies receiving medic and call positions, since the map draws
+them). Role or permission changes take effect on the account's next request;
+an already-open WebSocket keeps its filter until it reconnects.
+
+Everyone manages their own password in the GUI's **Konto** tab
+(`POST /api/me/password`, needs the current password, min. 8 characters).
+Admins cannot delete themselves or drop their own admin role, so the last
+admin can't lock everyone out. User management lives under `/api/users`
+(GET/POST/PATCH/DELETE, admin only); `GET /api/me` returns the caller's role
+and permissions.
 
 ## Mod-client authentication
 

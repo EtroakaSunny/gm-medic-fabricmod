@@ -25,6 +25,40 @@ async function api(path, opts = {}) {
     return res;
 }
 
+// --- Current account (role + view permissions) ---
+
+let me = null; // {username, role, permissions: [...]}
+
+function can(perm) {
+    return me !== null && (me.role === "admin" || me.permissions.includes(perm));
+}
+function isAdmin() {
+    return me !== null && me.role === "admin";
+}
+
+async function loadMe() {
+    const res = await api("/api/me");
+    me = await res.json();
+}
+
+// Show only the panels/tabs this account may see; hide management for non-admins.
+function applyPermissions() {
+    document.getElementById("medics-panel").classList.toggle("hidden", !can("medics"));
+    document.getElementById("map-panel").classList.toggle("hidden", !can("map"));
+    document.getElementById("calls-panel").classList.toggle("hidden", !can("calls"));
+    document.getElementById("tab-beta").classList.toggle("hidden", !can("nav"));
+    document.getElementById("add-medic-form").classList.toggle("hidden", !isAdmin());
+    document.getElementById("user-admin-panel").classList.toggle("hidden", !isAdmin());
+    // Re-pack the main grid so hidden panels don't leave empty columns.
+    const cols = [];
+    if (can("medics")) cols.push("280px");
+    if (can("map")) cols.push("1fr");
+    if (can("calls")) cols.push("320px");
+    document.getElementById("main-view").style.gridTemplateColumns = cols.join(" ") || "1fr";
+    document.getElementById("account-whoami").textContent =
+        `Angemeldet als ${me.username} (${me.role === "admin" ? "Admin" : "Benutzer"})`;
+}
+
 // --- View switching ---
 
 const loginView = document.getElementById("login-view");
@@ -34,14 +68,23 @@ function showLogin() {
     loginView.classList.remove("hidden");
     dashView.classList.add("hidden");
 }
-function showDash() {
+async function showDash() {
+    try {
+        await loadMe();
+    } catch {
+        return; // 401 already logged us out; other errors leave the login view up
+    }
     loginView.classList.add("hidden");
     dashView.classList.remove("hidden");
-    initMap();
-    // The panel just became visible — Leaflet needs a size recalculation.
-    requestAnimationFrame(() => map && map.invalidateSize());
+    applyPermissions();
+    showTab("main");
+    if (can("map")) {
+        initMap();
+        // The panel just became visible — Leaflet needs a size recalculation.
+        requestAnimationFrame(() => map && map.invalidateSize());
+    }
     connectWs();
-    refreshMedics();
+    if (can("medics")) refreshMedics();
 }
 
 // --- Login ---
@@ -69,6 +112,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
 
 function logout() {
     clearToken();
+    me = null;
     if (ws) { try { ws.close(); } catch {} ws = null; }
     showLogin();
 }
@@ -180,10 +224,10 @@ function renderMedics() {
         const status = !e.online ? `<span class="badge off">offline</span>`
             : e.on_duty ? `<span class="badge duty">im Dienst</span>`
             : `<span class="badge off">außer Dienst</span>`;
-        const del = e.inDb ? `<button class="del" title="Entfernen">×</button>` : "";
+        const del = (e.inDb && isAdmin()) ? `<button class="del" title="Entfernen">×</button>` : "";
         li.innerHTML = `<div class="row"><span class="name">${escapeHtml(e.display)}</span>${status}</div>
                         <div class="row"><span class="meta">${escapeHtml(e.username)}</span>${del}</div>`;
-        if (e.inDb) li.querySelector(".del").addEventListener("click", () => removeMedic(e.username));
+        if (del) li.querySelector(".del").addEventListener("click", () => removeMedic(e.username));
         ul.appendChild(li);
     }
 }
@@ -355,23 +399,27 @@ window.addEventListener("resize", () => {
 
 // --- Tabs ---
 
-const mainView = document.getElementById("main-view");
-const betaView = document.getElementById("beta-view");
+const TABS = {
+    main: document.getElementById("main-view"),
+    beta: document.getElementById("beta-view"),
+    account: document.getElementById("account-view"),
+};
 
 function showTab(which) {
-    const beta = which === "beta";
-    mainView.classList.toggle("hidden", beta);
-    betaView.classList.toggle("hidden", !beta);
-    document.getElementById("tab-main").classList.toggle("active", !beta);
-    document.getElementById("tab-beta").classList.toggle("active", beta);
-    if (beta) initNavView();
+    for (const [name, view] of Object.entries(TABS)) {
+        view.classList.toggle("hidden", name !== which);
+        document.getElementById(`tab-${name}`).classList.toggle("active", name === which);
+    }
+    if (which === "beta") initNavView();
+    if (which === "account") initAccountView();
     requestAnimationFrame(() => {
-        if (beta && navMap) navMap.invalidateSize();
-        if (!beta && map) map.invalidateSize();
+        if (which === "beta" && navMap) navMap.invalidateSize();
+        if (which === "main" && map) map.invalidateSize();
     });
 }
-document.getElementById("tab-main").addEventListener("click", () => showTab("main"));
-document.getElementById("tab-beta").addEventListener("click", () => showTab("beta"));
+for (const name of Object.keys(TABS)) {
+    document.getElementById(`tab-${name}`).addEventListener("click", () => showTab(name));
+}
 
 // --- Beta: navigation (street network learned from drive traces) ---
 
@@ -479,6 +527,154 @@ function clearNavRoute() {
 function setNavInfo(text) {
     document.getElementById("nav-route-info").textContent = text;
 }
+
+// --- Account: password self-service + (admins) user management ---
+
+const PERM_LABELS = { medics: "Sanitäter", map: "Karte", calls: "Einsätze", nav: "Navigation" };
+
+function initAccountView() {
+    if (isAdmin()) loadUsers();
+}
+
+document.getElementById("pw-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("pw-msg");
+    const oldPw = document.getElementById("pw-old").value;
+    const newPw = document.getElementById("pw-new").value;
+    if (newPw !== document.getElementById("pw-new2").value) {
+        msg.textContent = "Die neuen Passwörter stimmen nicht überein.";
+        return;
+    }
+    try {
+        const res = await api("/api/me/password", {
+            method: "POST",
+            body: JSON.stringify({ old_password: oldPw, new_password: newPw }),
+        });
+        if (!res.ok) {
+            msg.textContent = (await res.json().catch(() => null))?.detail || "Änderung fehlgeschlagen.";
+            return;
+        }
+        e.target.reset();
+        msg.textContent = "Passwort geändert.";
+    } catch {
+        msg.textContent = "Änderung fehlgeschlagen.";
+    }
+});
+
+function permCheckboxes(container, checked, onChange) {
+    container.innerHTML = "";
+    for (const [key, label] of Object.entries(PERM_LABELS)) {
+        const lab = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = checked.includes(key);
+        cb.dataset.perm = key;
+        if (onChange) cb.addEventListener("change", onChange);
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(label));
+        container.appendChild(lab);
+    }
+}
+
+function readPerms(container) {
+    return [...container.querySelectorAll("input:checked")].map(cb => cb.dataset.perm);
+}
+
+async function loadUsers() {
+    try {
+        const res = await api("/api/users");
+        renderUsers(await res.json());
+    } catch {}
+}
+
+function renderUsers(users) {
+    const ul = document.getElementById("user-list");
+    ul.innerHTML = "";
+    for (const u of users) {
+        const li = document.createElement("li");
+        const self = u.username === me.username;
+        const admin = u.role === "admin";
+        const roleBadge = admin ? `<span class="badge duty">Admin</span>`
+                                : `<span class="badge off">Benutzer</span>`;
+        li.innerHTML = `<div class="row"><span class="name">${escapeHtml(u.username)}${self ? ' <span class="meta">(du)</span>' : ""}</span>
+                            <span>${roleBadge}${self ? "" : '<button class="del" title="Löschen">×</button>'}</span></div>
+                        <div class="user-controls"></div>`;
+        const controls = li.querySelector(".user-controls");
+
+        if (!self) {
+            const roleSel = document.createElement("select");
+            roleSel.innerHTML = `<option value="user">Benutzer</option><option value="admin">Admin</option>`;
+            roleSel.value = u.role;
+            roleSel.addEventListener("change", () => patchUser(u.username, { role: roleSel.value }));
+            controls.appendChild(roleSel);
+
+            const resetBtn = document.createElement("button");
+            resetBtn.className = "ghost";
+            resetBtn.textContent = "Passwort zurücksetzen";
+            resetBtn.addEventListener("click", async () => {
+                const pw = prompt(`Neues Passwort für ${u.username} (min. 8 Zeichen):`);
+                if (pw) await patchUser(u.username, { password: pw });
+            });
+            controls.appendChild(resetBtn);
+
+            li.querySelector(".del").addEventListener("click", async () => {
+                if (!confirm(`Benutzer "${u.username}" löschen?`)) return;
+                await api(`/api/users/${encodeURIComponent(u.username)}`, { method: "DELETE" });
+                loadUsers();
+            });
+        }
+
+        // Admins hold every permission implicitly — checkboxes only for users.
+        if (!admin) {
+            const perms = document.createElement("div");
+            perms.className = "perms";
+            permCheckboxes(perms, u.permissions, () =>
+                patchUser(u.username, { permissions: readPerms(perms) }));
+            controls.appendChild(perms);
+        }
+
+        ul.appendChild(li);
+    }
+}
+
+async function patchUser(username, body) {
+    try {
+        const res = await api(`/api/users/${encodeURIComponent(username)}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) alert((await res.json().catch(() => null))?.detail || "Änderung fehlgeschlagen.");
+    } catch {}
+    loadUsers();
+}
+
+permCheckboxes(document.getElementById("add-user-perms"), ["medics", "map", "calls"]);
+
+document.getElementById("add-user-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("add-user-msg");
+    try {
+        const res = await api("/api/users", {
+            method: "POST",
+            body: JSON.stringify({
+                username: document.getElementById("add-user-name").value.trim(),
+                password: document.getElementById("add-user-pass").value,
+                role: document.getElementById("add-user-role").value,
+                permissions: readPerms(document.getElementById("add-user-perms")),
+            }),
+        });
+        if (!res.ok) {
+            msg.textContent = (await res.json().catch(() => null))?.detail || "Anlegen fehlgeschlagen.";
+            return;
+        }
+        e.target.reset();
+        permCheckboxes(document.getElementById("add-user-perms"), ["medics", "map", "calls"]);
+        msg.textContent = "Benutzer angelegt.";
+        loadUsers();
+    } catch {
+        msg.textContent = "Anlegen fehlgeschlagen.";
+    }
+});
 
 // --- Utils ---
 
