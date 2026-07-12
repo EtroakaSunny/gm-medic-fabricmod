@@ -1,11 +1,14 @@
 """FastAPI application wiring: routers, static GUI, and startup bootstrap."""
 import asyncio
+import hashlib
 import logging
 import os
+import re
 import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, database
@@ -78,6 +81,30 @@ async def gui_cache_control(request, call_next):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
+_ASSET_REF_RE = re.compile(r'(app\.js|style\.css)(\?v=[^"\']*)?')
+
+
+def _asset_version() -> str:
+    """Hash of app.js + style.css, used to cache-bust their URLs in index.html.
+    Cloudflare's default JS/CSS caching ignores the no-cache header above (it
+    overrides Cache-Control with its own multi-hour TTL), so the only fetch
+    that's guaranteed fresh after a deploy is one for a URL no cache has seen
+    before — hence deriving the query string from content instead of a
+    manually bumped counter, which is easy to forget (see git history)."""
+    h = hashlib.sha256()
+    for name in ("app.js", "style.css"):
+        h.update((config.STATIC_DIR / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> HTMLResponse:
+    html = (config.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    version = _asset_version()
+    html = _ASSET_REF_RE.sub(lambda m: f"{m.group(1)}?v={version}", html)
+    return HTMLResponse(html)
+
+
 # REST + WebSocket routes are registered before the static mount so they win.
 app.include_router(api_router)
 app.include_router(users_router)
@@ -86,5 +113,5 @@ app.include_router(mod_ws_router)
 app.include_router(admin_ws_router)
 app.include_router(map_router)
 
-# Serve the admin GUI from "/" (html=True serves index.html for the root).
+# Serve the rest of the admin GUI (JS/CSS/vendor assets); "/" is handled above.
 app.mount("/", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")
