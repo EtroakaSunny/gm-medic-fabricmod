@@ -57,5 +57,6 @@ services:
 
 volumes:
   gm_medic_data:
+    name: gm_medic_data
   caddy_data:
   caddy_config:
