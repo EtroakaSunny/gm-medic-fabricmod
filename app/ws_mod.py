@@ -202,12 +202,13 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
         await state.broadcast_mods({"type": "CALL_SYNC", "call": stored}, exclude=ws)
 
         # Compute the nearest on-duty medic (reporter included) and announce
-        # it to every connected mod client, not just the reporter.
+        # it to every on-duty mod client, not just the reporter — off-duty
+        # medics aren't dispatch candidates, so they shouldn't be told who is.
         nearest, dist = compute_nearest(stored, state.online)
         if nearest is not None:
             stored["suggestedMedic"] = nearest
             await state.broadcast_admin({"type": "call_update", "call": stored})
-            await state.broadcast_mods({
+            await state.broadcast_mods_on_duty({
                 "type": "NEAREST_MEDIC",
                 "callId": stored["callId"],
                 "nearestMedic": nearest,

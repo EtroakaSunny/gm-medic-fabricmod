@@ -196,5 +196,24 @@ class LiveState:
         for ws in dead:
             self.mod_ws.pop(ws, None)
 
+    async def broadcast_mods_on_duty(self, message: dict, exclude: WebSocket | None = None) -> None:
+        """Fan a message out to connected mod clients whose medic IS on duty."""
+        if not self.mod_ws:
+            return
+        payload = json.dumps(message)
+        dead = []
+        for ws, username in list(self.mod_ws.items()):
+            if ws is exclude:
+                continue
+            info = self.online.get(username)
+            if info is None or not info.get("on_duty"):
+                continue
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.mod_ws.pop(ws, None)
+
 
 state = LiveState()
