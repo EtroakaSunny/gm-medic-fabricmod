@@ -4,6 +4,7 @@ import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
+import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
@@ -37,6 +38,9 @@ public class ChatMessageHandler {
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
+        // Unverified players get nothing from the mod at all — not even duty detection,
+        // so isInDuty() can never flip true and everything gated on it stays off too.
+        if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         try {
             String raw = message.getString();
             GMMedic.LOGGER.debug("[GM-Medic] Raw message: {}", raw);

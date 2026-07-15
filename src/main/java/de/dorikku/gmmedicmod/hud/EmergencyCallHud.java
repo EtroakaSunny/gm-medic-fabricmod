@@ -3,6 +3,7 @@ package de.dorikku.gmmedicmod.hud;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
+import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -50,6 +51,7 @@ public class EmergencyCallHud {
     public static void render(DrawContext drawContext, RenderTickCounter tickCounter) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.player == null) return;
+        if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
 
         boolean compact = HudConfig.getInstance().isCompactMode();

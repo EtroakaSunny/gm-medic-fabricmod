@@ -3,6 +3,7 @@ package de.dorikku.gmmedicmod.render;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
+import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
@@ -41,6 +42,7 @@ public final class CallTargetHighlightRenderer {
     public static void render(WorldRenderContext ctx) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.world == null || client.player == null) return;
+        if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
         if (!HudConfig.getInstance().isHighlightEnabled()) return;
 
