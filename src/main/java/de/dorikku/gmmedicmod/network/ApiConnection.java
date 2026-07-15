@@ -5,13 +5,12 @@ import de.dorikku.gmmedicmod.config.BuildFlags;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
-import net.minecraft.client.MinecraftClient;
-
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.util.concurrent.*;
+import net.minecraft.client.Minecraft;
 
 public class ApiConnection implements EmergencyCallManager.CallEventListener {
 
@@ -79,8 +78,8 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
                     .get(10, TimeUnit.SECONDS);
             webSocket = ws;
             reconnectAttempts = 0;
-            MinecraftClient client = MinecraftClient.getInstance();
-            String username = client.getSession().getUsername();
+            Minecraft client = Minecraft.getInstance();
+            String username = client.getUser().getName();
             String token = ApiConfig.getInstance().getAuthToken();
             sendRaw(OutboundMessages.auth(token, username));
             GMMedic.LOGGER.info("[ApiConnection] Connected to {}", url);
@@ -127,7 +126,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         // The connection now outlives duty: only announce DUTY_ON when actually on duty
         // (e.g. re-auth after a reconnect); otherwise the client is just online.
         if (EmergencyCallManager.getInstance().isInDuty()) {
-            String username = MinecraftClient.getInstance().getSession().getUsername();
+            String username = Minecraft.getInstance().getUser().getName();
             sendRaw(OutboundMessages.dutyOn(username));
             startLocationTask();
         }
@@ -151,9 +150,9 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
     private void startLocationTask() {
         if (locationTask != null) return;
         locationTask = scheduler.scheduleAtFixedRate(() -> {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) return;
-            String locationUsername = client.getSession().getUsername();
+            String locationUsername = client.getUser().getName();
             double px = client.player.getX();
             double py = client.player.getY();
             double pz = client.player.getZ();
@@ -198,7 +197,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
 
     @Override
     public void onDutyChanged(boolean inDuty) {
-        String username = MinecraftClient.getInstance().getSession().getUsername();
+        String username = Minecraft.getInstance().getUser().getName();
         if (inDuty) {
             if (authenticated) {
                 send(OutboundMessages.dutyOn(username));

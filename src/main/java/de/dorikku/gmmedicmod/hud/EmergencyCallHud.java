@@ -4,12 +4,11 @@ import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderTickCounter;
-
 import java.util.List;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public class EmergencyCallHud {
 
@@ -48,8 +47,8 @@ public class EmergencyCallHud {
 
     private static final long LOCATION_TOGGLE_MS = 7_000L;
 
-    public static void render(DrawContext drawContext, RenderTickCounter tickCounter) {
-        MinecraftClient client = MinecraftClient.getInstance();
+    public static void render(GuiGraphicsExtractor drawContext, DeltaTracker tickCounter) {
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
         if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
@@ -62,7 +61,7 @@ public class EmergencyCallHud {
         int panelWidth   = compact ? PANEL_WIDTH_COMPACT  : PANEL_WIDTH_NORMAL;
 
         EmergencyCallManager mgr = EmergencyCallManager.getInstance();
-        TextRenderer textRenderer = client.textRenderer;
+        Font textRenderer = client.font;
         List<EmergencyCall> calls = mgr.getActiveCalls();
 
         mgr.timeoutExpiredPendingCalls();
@@ -75,7 +74,7 @@ public class EmergencyCallHud {
         mgr.removeExpiredRejectedCalls(10_000L);
         mgr.removeExpiredResolvedCalls(5_000L);
 
-        int screenWidth = client.getWindow().getScaledWidth();
+        int screenWidth = client.getWindow().getGuiScaledWidth();
         int panelX = screenWidth - panelWidth - margin;
 
         String header = compact
@@ -85,17 +84,17 @@ public class EmergencyCallHud {
         if (calls.isEmpty()) {
             if (compact) {
                 String emptyText = "§c🚑§8 Keine Notrufe";
-                int emptyWidth = textRenderer.getWidth(emptyText) + padding * 2 + 4;
+                int emptyWidth = textRenderer.width(emptyText) + padding * 2 + 4;
                 int emptyX = screenWidth - emptyWidth - margin;
                 drawContext.fill(emptyX, margin, emptyX + emptyWidth, margin + padding + lineHeight + padding, BG_COLOR);
-                drawContext.drawText(textRenderer, emptyText, emptyX + padding, margin + padding, NO_CALLS_COLOR, true);
+                drawContext.text(textRenderer, emptyText, emptyX + padding, margin + padding, NO_CALLS_COLOR, true);
             } else {
                 int panelHeight = padding * 2 + lineHeight * 2;
                 drawContext.fill(panelX, margin, panelX + panelWidth, margin + panelHeight, BG_COLOR);
                 int y = margin + padding;
-                drawContext.drawText(textRenderer, header, panelX + padding, y, HEADER_COLOR, true);
+                drawContext.text(textRenderer, header, panelX + padding, y, HEADER_COLOR, true);
                 y += lineHeight;
-                drawContext.drawText(textRenderer, "Keine aktiven Notrufe", panelX + padding, y, NO_CALLS_COLOR, true);
+                drawContext.text(textRenderer, "Keine aktiven Notrufe", panelX + padding, y, NO_CALLS_COLOR, true);
             }
             return;
         }
@@ -110,7 +109,7 @@ public class EmergencyCallHud {
         drawContext.fill(panelX, margin, panelX + panelWidth, margin + totalHeight, BG_COLOR);
 
         int currentY = margin + padding;
-        drawContext.drawText(textRenderer, header, panelX + padding, currentY, HEADER_COLOR, true);
+        drawContext.text(textRenderer, header, panelX + padding, currentY, HEADER_COLOR, true);
         currentY += lineHeight + padding;
         drawContext.fill(panelX + padding, currentY - 2, panelX + panelWidth - padding, currentY - 1, RESOLVED_COLOR);
 
@@ -126,7 +125,7 @@ public class EmergencyCallHud {
         }
     }
 
-    private static int drawCallEntry(DrawContext ctx, TextRenderer text, EmergencyCall call, int panelX, int y, int panelWidth, int index, boolean showCoords, boolean compact, int padding, int lineHeight) {
+    private static int drawCallEntry(GuiGraphicsExtractor ctx, Font text, EmergencyCall call, int panelX, int y, int panelWidth, int index, boolean showCoords, boolean compact, int padding, int lineHeight) {
         int x = panelX + padding;
         int indent = compact ? 0 : 4;
         boolean isDeath = call.getType() == EmergencyCall.CallType.DEATH;
@@ -169,28 +168,28 @@ public class EmergencyCallHud {
             String prefix = "#" + index + " " + typeLabel;
             int maxHeaderWidth = panelWidth - padding * 2;
             if (timerStr != null) {
-                int timerWidth = text.getWidth(timerStr);
-                int availableForCaller = maxHeaderWidth - text.getWidth(prefix + " ") - timerWidth;
+                int timerWidth = text.width(timerStr);
+                int availableForCaller = maxHeaderWidth - text.width(prefix + " ") - timerWidth;
                 if (!call.isPending()) {
                     String callerTrunc = truncate(text, call.getCallerName(), availableForCaller);
                     prefix = prefix + " " + callerTrunc;
                 }
-                ctx.drawText(text, prefix, x, y, typeColor, true);
+                ctx.text(text, prefix, x, y, typeColor, true);
                 int timerX = x + panelWidth - padding * 2 - timerWidth;
-                ctx.drawText(text, timerStr.trim(), timerX, y, timerColor, true);
+                ctx.text(text, timerStr.trim(), timerX, y, timerColor, true);
             } else {
                 if (!call.isPending()) {
-                    int availableForCaller = maxHeaderWidth - text.getWidth(prefix + " ");
+                    int availableForCaller = maxHeaderWidth - text.width(prefix + " ");
                     String callerTrunc = truncate(text, call.getCallerName(), availableForCaller);
                     prefix = prefix + " " + callerTrunc;
                 }
-                ctx.drawText(text, prefix, x, y, typeColor, true);
+                ctx.text(text, prefix, x, y, typeColor, true);
             }
         } else {
             String callHeader = "#" + index + " " + typeLabel;
-            ctx.drawText(text, callHeader, x, y, typeColor, true);
+            ctx.text(text, callHeader, x, y, typeColor, true);
             if (timerStr != null) {
-                ctx.drawText(text, timerStr, x + text.getWidth(callHeader), y, timerColor, true);
+                ctx.text(text, timerStr, x + text.width(callHeader), y, timerColor, true);
             }
         }
 
@@ -198,7 +197,7 @@ public class EmergencyCallHud {
 
         if (call.isPending()) {
             String pendingText = compact ? "⏳ ..." : "⏳ Warten auf Datenübertragung";
-            ctx.drawText(text, pendingText, x + indent, y, PENDING_COLOR, true);
+            ctx.text(text, pendingText, x + indent, y, PENDING_COLOR, true);
             return y + lineHeight;
         }
 
@@ -207,52 +206,52 @@ public class EmergencyCallHud {
 
         if (compact) {
             if (isEntangled) {
-                ctx.drawText(text, "⚠ Fehler", x + indent, y, ENTANGLED_COLOR, true);
+                ctx.text(text, "⚠ Fehler", x + indent, y, ENTANGLED_COLOR, true);
                 y += lineHeight;
             }
             String reasonLine = truncateSuffix(text, call.getReason(), maxWidth, "..");
-            ctx.drawText(text, reasonLine, x + indent, y, infoColor, true);
+            ctx.text(text, reasonLine, x + indent, y, infoColor, true);
             y += lineHeight;
 
             String locLine = call.hasKnownLocation()
                     ? String.format("%.0f %.0f %.0f", call.getX(), call.getY(), call.getZ())
                     : "Unbekannt";
-            if (call.hasKnownLocation() && text.getWidth(locLine) > maxWidth) {
+            if (call.hasKnownLocation() && text.width(locLine) > maxWidth) {
                 locLine = String.format("%.0f %.0f", call.getX(), call.getZ());
             }
-            ctx.drawText(text, locLine, x + indent, y, infoColor, true);
+            ctx.text(text, locLine, x + indent, y, infoColor, true);
 
             if (isResolved) {
                 String rl = call.getResolvedReason() != null ? call.getResolvedReason() : "✔";
-                int rlX = x + panelWidth - padding * 2 - text.getWidth(rl);
-                if (rlX > x + indent + text.getWidth(locLine) + 2) {
-                    ctx.drawText(text, rl, rlX, y, RESOLVED_LABEL, true);
+                int rlX = x + panelWidth - padding * 2 - text.width(rl);
+                if (rlX > x + indent + text.width(locLine) + 2) {
+                    ctx.text(text, rl, rlX, y, RESOLVED_LABEL, true);
                 }
             } else if (isRejected) {
                 String rj = "✘";
-                int rjX = x + panelWidth - padding * 2 - text.getWidth(rj);
-                if (rjX > x + indent + text.getWidth(locLine) + 2) {
-                    ctx.drawText(text, rj, rjX, y, REJECTED_COLOR, true);
+                int rjX = x + panelWidth - padding * 2 - text.width(rj);
+                if (rjX > x + indent + text.width(locLine) + 2) {
+                    ctx.text(text, rj, rjX, y, REJECTED_COLOR, true);
                 }
             } else if (call.isAccepted()) {
                 String mc = call.getAssignedMedic();
-                int mcMaxWidth = maxWidth - text.getWidth(locLine) - 4;
+                int mcMaxWidth = maxWidth - text.width(locLine) - 4;
                 if (mcMaxWidth > 10) {
-                    if (text.getWidth(mc) > mcMaxWidth) mc = mc.substring(0, Math.min(mc.length(), 6)) + "..";
-                    ctx.drawText(text, mc, x + panelWidth - padding * 2 - text.getWidth(mc), y, MEDIC_COLOR, true);
+                    if (text.width(mc) > mcMaxWidth) mc = mc.substring(0, Math.min(mc.length(), 6)) + "..";
+                    ctx.text(text, mc, x + panelWidth - padding * 2 - text.width(mc), y, MEDIC_COLOR, true);
                 }
             }
             y += lineHeight;
 
         } else {
-            ctx.drawText(text, "Anrufer: " + call.getCallerName(), x + indent, y, infoColor, true);
+            ctx.text(text, "Anrufer: " + call.getCallerName(), x + indent, y, infoColor, true);
             y += lineHeight;
 
             String reasonLine = "Grund: " + call.getReason();
-            if (text.getWidth(reasonLine) > maxWidth) {
+            if (text.width(reasonLine) > maxWidth) {
                 reasonLine = truncateSuffix(text, reasonLine, maxWidth, "...");
             }
-            ctx.drawText(text, reasonLine, x + indent, y, infoColor, true);
+            ctx.text(text, reasonLine, x + indent, y, infoColor, true);
             y += lineHeight;
 
             String locName = call.getLocationName();
@@ -264,17 +263,17 @@ public class EmergencyCallHud {
             } else {
                 locLine = "Ort: " + String.format("X:%.0f Y:%.0f Z:%.0f", call.getX(), call.getY(), call.getZ());
             }
-            ctx.drawText(text, locLine, x + indent, y, infoColor, true);
+            ctx.text(text, locLine, x + indent, y, infoColor, true);
             y += lineHeight;
 
             if (isEntangled) {
-                ctx.drawText(text, "⚠ Fehler: Daten verschränkt", x + indent, y, ENTANGLED_COLOR, true);
+                ctx.text(text, "⚠ Fehler: Daten verschränkt", x + indent, y, ENTANGLED_COLOR, true);
                 y += lineHeight;
             }
 
             if (isResolved) {
                 String resolvedLabel = call.getResolvedReason() != null ? call.getResolvedReason() : "Erledigt";
-                ctx.drawText(text, "✔ " + resolvedLabel, x + indent, y, RESOLVED_LABEL, true);
+                ctx.text(text, "✔ " + resolvedLabel, x + indent, y, RESOLVED_LABEL, true);
                 y += lineHeight;
             }
 
@@ -283,12 +282,12 @@ public class EmergencyCallHud {
                 if (call.getRejectedBy() != null && !call.getRejectedBy().isEmpty()) {
                     line += " von " + call.getRejectedBy();
                 }
-                ctx.drawText(text, line, x + indent, y, REJECTED_COLOR, true);
+                ctx.text(text, line, x + indent, y, REJECTED_COLOR, true);
                 y += lineHeight;
             }
 
             if (!isResolved && !isRejected && call.isAccepted()) {
-                ctx.drawText(text, "Medic: " + call.getAssignedMedic(), x + indent, y, MEDIC_COLOR, true);
+                ctx.text(text, "Medic: " + call.getAssignedMedic(), x + indent, y, MEDIC_COLOR, true);
                 y += lineHeight;
             }
         }
@@ -311,17 +310,17 @@ public class EmergencyCallHud {
         }
     }
 
-    private static String truncate(TextRenderer text, String str, int maxWidth) {
-        if (text.getWidth(str) <= maxWidth) return str;
-        while (text.getWidth(str + "..") > maxWidth && str.length() > 1) {
+    private static String truncate(Font text, String str, int maxWidth) {
+        if (text.width(str) <= maxWidth) return str;
+        while (text.width(str + "..") > maxWidth && str.length() > 1) {
             str = str.substring(0, str.length() - 1);
         }
         return str + "..";
     }
 
-    private static String truncateSuffix(TextRenderer text, String str, int maxWidth, String suffix) {
-        if (text.getWidth(str) <= maxWidth) return str;
-        while (text.getWidth(str + suffix) > maxWidth && str.length() > suffix.length()) {
+    private static String truncateSuffix(Font text, String str, int maxWidth, String suffix) {
+        if (text.width(str) <= maxWidth) return str;
+        while (text.width(str + suffix) > maxWidth && str.length() > suffix.length()) {
             str = str.substring(0, str.length() - 1);
         }
         return str + suffix;

@@ -5,11 +5,10 @@ import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
-
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 public class ChatMessageHandler {
 
@@ -36,7 +35,7 @@ public class ChatMessageHandler {
     // "... legt <player> einen Verband an" — a medic treated the player, so the highlight can go.
     private static final Pattern BANDAGE_TARGET      = Pattern.compile("legt\\s+(.+?)\\s+einen Verband an");
 
-    public static void onGameMessage(Text message, boolean overlay) {
+    public static void onGameMessage(Component message, boolean overlay) {
         if (overlay) return;
         // Unverified players get nothing from the mod at all — not even duty detection,
         // so isInDuty() can never flip true and everything gated on it stays off too.
@@ -304,10 +303,10 @@ public class ChatMessageHandler {
     }
 
     private static String getPlayerName() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) return null;
-        if (client.player != null) return client.player.getNameForScoreboard();
-        if (client.getSession() != null) return client.getSession().getUsername();
+        if (client.player != null) return client.player.getScoreboardName();
+        if (client.getUser() != null) return client.getUser().getName();
         return null;
     }
 }

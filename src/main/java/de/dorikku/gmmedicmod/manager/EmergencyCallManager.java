@@ -5,7 +5,6 @@ import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
 
 import java.util.*;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EmergencyCallManager {

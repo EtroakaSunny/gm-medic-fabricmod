@@ -1,22 +1,19 @@
 package de.dorikku.gmmedicmod.render;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexRendering;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ColorHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.util.ARGB;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +36,9 @@ public final class CallTargetHighlightRenderer {
 
     private CallTargetHighlightRenderer() {}
 
-    public static void render(WorldRenderContext ctx) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.world == null || client.player == null) return;
+    public static void render(LevelRenderContext ctx) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null || client.player == null) return;
         if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
         if (!HudConfig.getInstance().isHighlightEnabled()) return;
@@ -52,15 +49,13 @@ public final class CallTargetHighlightRenderer {
 
         double range = HudConfig.getInstance().getHighlightRange();
         double rangeSq = range * range;
-        float tickDelta = client.getRenderTickCounter().getTickProgress(true);
-        Vec3d cam = client.gameRenderer.getCamera().getCameraPos();
+        float tickDelta = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        Vec3 cam = client.gameRenderer.getMainCamera().position();
 
-        MatrixStack ms = ctx.matrices();
-        VertexConsumer vc = ctx.consumers().getBuffer(RenderLayers.lines());
-
-        for (AbstractClientPlayerEntity player : client.world.getPlayers()) {
+        List<BoxSpec> boxes = new ArrayList<>();
+        for (AbstractClientPlayer player : client.level.players()) {
             if (player == client.player) continue;
-            if (client.player.squaredDistanceTo(player) > rangeSq) continue;
+            if (client.player.distanceToSqr(player) > rangeSq) continue;
 
             // An open call takes colour priority; otherwise a keyword highlight ("heal"/"low") shows green.
             EmergencyCall.CallType type = matchTarget(targets, player);
@@ -72,16 +67,25 @@ public final class CallTargetHighlightRenderer {
             } else {
                 continue;
             }
-            Box box = lerpedBox(player, tickDelta);
+            AABB box = lerpedBox(player, tickDelta);
+            int color = ARGB.colorFromFloat(BOX_ALPHA, rgb[0], rgb[1], rgb[2]);
 
-            // The matrix stack is anchored at the camera, so feed the box in camera-relative space.
-            VoxelShape shape = VoxelShapes.cuboidUnchecked(
+            // Camera-relative, since the pose passed to the geometry callback is anchored at the camera.
+            boxes.add(new BoxSpec(
                     box.minX - cam.x, box.minY - cam.y, box.minZ - cam.z,
-                    box.maxX - cam.x, box.maxY - cam.y, box.maxZ - cam.z);
-            int color = ColorHelper.fromFloats(BOX_ALPHA, rgb[0], rgb[1], rgb[2]);
-            VertexRendering.drawOutline(ms, vc, shape, 0.0, 0.0, 0.0, color, LINE_WIDTH);
+                    box.maxX - cam.x, box.maxY - cam.y, box.maxZ - cam.z,
+                    color));
         }
+        if (boxes.isEmpty()) return;
+
+        ctx.submitNodeCollector().submitCustomGeometry(ctx.poseStack(), RenderTypes.lines(), (pose, vc) -> {
+            for (BoxSpec b : boxes) {
+                renderBoxOutline(vc, pose, b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.color);
+            }
+        });
     }
+
+    private record BoxSpec(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {}
 
     /**
      * Caller names (normalized, lowercase) of all open calls mapped to their type.
@@ -99,7 +103,7 @@ public final class CallTargetHighlightRenderer {
     }
 
     private static EmergencyCall.CallType matchTarget(Map<String, EmergencyCall.CallType> targets,
-                                                       AbstractClientPlayerEntity player) {
+                                                       AbstractClientPlayer player) {
         String account = normalizeKey(player.getGameProfile().name());
         if (account != null && targets.containsKey(account)) return targets.get(account);
         String name = normalizeKey(player.getName().getString());
@@ -112,7 +116,7 @@ public final class CallTargetHighlightRenderer {
     }
 
     /** Like {@link #matchTarget} but for a plain set of normalized name keys (keyword highlights). */
-    private static boolean playerMatches(Set<String> keys, AbstractClientPlayerEntity player) {
+    private static boolean playerMatches(Set<String> keys, AbstractClientPlayer player) {
         if (keys.isEmpty()) return false;
         String account = normalizeKey(player.getGameProfile().name());
         if (account != null && keys.contains(account)) return true;
@@ -130,13 +134,44 @@ public final class CallTargetHighlightRenderer {
         return normalized != null ? normalized.toLowerCase() : null;
     }
 
-    private static Box lerpedBox(AbstractClientPlayerEntity player, float tickDelta) {
-        Vec3d pos = player.getLerpedPos(tickDelta);
-        double halfWidth = player.getWidth() / 2.0;
-        double height = player.getHeight();
-        return new Box(
+    private static AABB lerpedBox(AbstractClientPlayer player, float tickDelta) {
+        Vec3 pos = player.getPosition(tickDelta);
+        double halfWidth = player.getBbWidth() / 2.0;
+        double height = player.getBbHeight();
+        return new AABB(
                 pos.x - halfWidth, pos.y, pos.z - halfWidth,
                 pos.x + halfWidth, pos.y + height, pos.z + halfWidth
         );
+    }
+
+    /** Draws the 12 edges of an axis-aligned box (26.1 dropped the vanilla ShapeRenderer debug helper). */
+    private static void renderBoxOutline(VertexConsumer vc, PoseStack.Pose pose,
+                                          double minX, double minY, double minZ,
+                                          double maxX, double maxY, double maxZ,
+                                          int color) {
+        // bottom
+        line(vc, pose, minX, minY, minZ, maxX, minY, minZ, color);
+        line(vc, pose, maxX, minY, minZ, maxX, minY, maxZ, color);
+        line(vc, pose, maxX, minY, maxZ, minX, minY, maxZ, color);
+        line(vc, pose, minX, minY, maxZ, minX, minY, minZ, color);
+        // top
+        line(vc, pose, minX, maxY, minZ, maxX, maxY, minZ, color);
+        line(vc, pose, maxX, maxY, minZ, maxX, maxY, maxZ, color);
+        line(vc, pose, maxX, maxY, maxZ, minX, maxY, maxZ, color);
+        line(vc, pose, minX, maxY, maxZ, minX, maxY, minZ, color);
+        // verticals
+        line(vc, pose, minX, minY, minZ, minX, maxY, minZ, color);
+        line(vc, pose, maxX, minY, minZ, maxX, maxY, minZ, color);
+        line(vc, pose, maxX, minY, maxZ, maxX, maxY, maxZ, color);
+        line(vc, pose, minX, minY, maxZ, minX, maxY, maxZ, color);
+    }
+
+    private static void line(VertexConsumer vc, PoseStack.Pose pose,
+                              double x1, double y1, double z1,
+                              double x2, double y2, double z2,
+                              int color) {
+        float nx = (float) (x2 - x1), ny = (float) (y2 - y1), nz = (float) (z2 - z1);
+        vc.addVertex(pose, (float) x1, (float) y1, (float) z1).setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(LINE_WIDTH);
+        vc.addVertex(pose, (float) x2, (float) y2, (float) z2).setColor(color).setNormal(pose, nx, ny, nz).setLineWidth(LINE_WIDTH);
     }
 }
