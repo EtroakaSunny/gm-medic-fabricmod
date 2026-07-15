@@ -177,8 +177,14 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             await state.broadcast_mods({"type": "ALARM_SYNC", "active": False})
 
     elif mtype == "CALL_NEW":
+        call_id = msg.get("callId")
+        if call_id is not None and state.get_call(call_id) is not None:
+            # Several on-duty medics' clients detect the same call independently
+            # and each report it — only the first report counts, mirroring the
+            # ALARM_TRIGGERED dedup below.
+            return
         call = {
-            "callId": msg.get("callId"),
+            "callId": call_id,
             "callerName": msg.get("callerName"),
             "callType": msg.get("callType"),
             "reason": msg.get("reason"),
