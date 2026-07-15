@@ -191,6 +191,8 @@ public final class InboundDispatcher {
      * last known position was within its nearby threshold, so any value here is worth announcing.
      */
     private static void announceMedicNearby(EmergencyCall call, String medicName, double distanceBlocks) {
+        // The broadcast reaches every connected client; only on-duty medics care.
+        if (!EmergencyCallManager.getInstance().isInDuty()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
         String caller = call.getCallerName();

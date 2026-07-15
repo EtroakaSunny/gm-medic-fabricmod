@@ -115,6 +115,18 @@ public class EmergencyCallManager {
         if (callId == null) return null;
         EmergencyCall call = findByCallId(callId);
         if (call == null) {
+            // The same real transmission may already be tracked locally under a
+            // different callId — this client parsed the chat line itself and minted
+            // its own random UUID before the server told it another medic's report
+            // won. Adopt the server's callId onto that local call instead of adding
+            // a second HUD row for the same emergency.
+            call = findMergeCandidate(caller, type);
+            if (call != null) {
+                call.setCallId(callId);
+                call.setRemote(true);
+            }
+        }
+        if (call == null) {
             call = new EmergencyCall(caller, reason, x, y, z, locationName, type);
             call.setCallId(callId);
             call.setRemote(true);
@@ -134,6 +146,23 @@ public class EmergencyCallManager {
             call.setResolved(resolveReason != null ? resolveReason : "Erledigt");
         }
         return call;
+    }
+
+    /**
+     * Finds a locally tracked, active call of the same type for this caller that a remote
+     * update (a different callId) can be merged into, instead of creating a duplicate HUD row.
+     */
+    private EmergencyCall findMergeCandidate(String caller, CallType type) {
+        String key = callerKey(caller);
+        if (key == null) return null;
+        for (EmergencyCall existing : activeCalls) {
+            if (!existing.isPending() && !existing.isResolved()
+                    && existing.getType() == type
+                    && callerMatches(existing, caller)) {
+                return existing;
+            }
+        }
+        return null;
     }
 
     public void addCall(EmergencyCall call) {
