@@ -5,6 +5,7 @@ import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.mixin.BossBarHudAccessor;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
+import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.hud.ClientBossBar;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -90,7 +91,7 @@ public final class VehicleAutomation {
     }
 
     public static void tick(MinecraftClient client) {
-        if (client.player == null) {
+        if (client.player == null || !ApiConnection.getInstance().isFeatureUnlocked()) {
             reset();
             return;
         }
