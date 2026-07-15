@@ -106,6 +106,26 @@ class LiveState:
     def get_call(self, call_id: str) -> dict | None:
         return self.calls.get(call_id)
 
+    def find_open_call_by_caller(self, caller_name, call_type) -> dict | None:
+        """Find an open call already reported for this caller and call type.
+
+        Each on-duty medic's client mints its own random callId when it parses a
+        transmission from chat, so several clients reporting the same real call
+        each send a different callId — callId alone can't dedupe them. Match on
+        caller name + type instead, mirroring the mod's own duplicate-transmission
+        filter (EmergencyCallManager.isDuplicateTransmission).
+        """
+        key = (caller_name or "").strip().lower()
+        if not key:
+            return None
+        for call in self.calls.values():
+            if call.get("resolved"):
+                continue
+            existing_key = (call.get("callerName") or "").strip().lower()
+            if existing_key == key and call.get("callType") == call_type:
+                return call
+        return None
+
     def open_calls(self) -> list[dict]:
         return [c for c in self.calls.values() if not c.get("resolved")]
 

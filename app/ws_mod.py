@@ -179,10 +179,18 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
     elif mtype == "CALL_NEW":
         call_id = msg.get("callId")
         if call_id is not None and state.get_call(call_id) is not None:
-            # Several on-duty medics' clients detect the same call independently
-            # and each report it — only the first report counts, mirroring the
-            # ALARM_TRIGGERED dedup below.
+            # Same client resending (e.g. reconnect) — only the first report counts.
             return
+
+        duplicate = state.find_open_call_by_caller(msg.get("callerName"), msg.get("callType"))
+        if duplicate is not None:
+            # Several on-duty medics' clients detect the same call independently,
+            # each minting its own random callId, so callId alone can't dedupe
+            # them — tell the reporter about the call that already won so its
+            # own HUD doesn't keep a second, orphaned entry for it.
+            await _send(ws, {"type": "CALL_SYNC", "call": duplicate})
+            return
+
         call = {
             "callId": call_id,
             "callerName": msg.get("callerName"),
