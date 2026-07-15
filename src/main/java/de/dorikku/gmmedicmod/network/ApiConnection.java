@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.network;
 
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.config.BuildFlags;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
@@ -182,6 +183,16 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
 
     public boolean isAuthenticated() { return authenticated; }
     public boolean isConnected() { return webSocket != null; }
+
+    /**
+     * Gate for every mod feature (vehicle automation, siren, HUD, call tracking): in the
+     * gated build, nothing runs until the API server has actually verified this player
+     * (AUTH_OK received). The unrestricted build ({@code -Prequire_verification=false})
+     * skips this check entirely.
+     */
+    public boolean isFeatureUnlocked() {
+        return !BuildFlags.REQUIRE_SERVER_VERIFICATION || authenticated;
+    }
 
     // --- CallEventListener ---
 
