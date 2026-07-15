@@ -2,10 +2,10 @@ package de.dorikku.gmmedicmod.hud;
 
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.joml.Matrix3x2fStack;
 
 /**
@@ -21,8 +21,8 @@ public class AlarmHud {
     private static final int BORDER_BRIGHT = 0xFFFFFF55;
     private static final int BORDER_DARK   = 0xFFFFAA00;
 
-    public static void render(DrawContext ctx, RenderTickCounter tickCounter) {
-        MinecraftClient client = MinecraftClient.getInstance();
+    public static void render(GuiGraphicsExtractor ctx, DeltaTracker tickCounter) {
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
         AlarmManager alarm = AlarmManager.getInstance();
         if (!alarm.isActive()) return;
@@ -31,8 +31,8 @@ public class AlarmHud {
         String name = alarm.getAlarmName();
         if (name == null) return;
         boolean flash = System.currentTimeMillis() / FLASH_MS % 2 == 0;
-        TextRenderer text = client.textRenderer;
-        int width = client.getWindow().getScaledWidth();
+        Font text = client.font;
+        int width = client.getWindow().getGuiScaledWidth();
 
         int top = 12;
         int height = 44;
@@ -41,17 +41,17 @@ public class AlarmHud {
         ctx.fill(0, top + height - 2, width, top + height, flash ? BORDER_BRIGHT : BORDER_DARK);
 
         String headline = "⚠ ALARM AUSGELÖST ⚠";
-        Matrix3x2fStack matrices = ctx.getMatrices();
+        Matrix3x2fStack matrices = ctx.pose();
         matrices.pushMatrix();
         // 2x scale: the scaled text is 2*getWidth wide, so start at center - getWidth.
-        matrices.translate(width / 2f - text.getWidth(headline), top + 6);
+        matrices.translate(width / 2f - text.width(headline), top + 6);
         matrices.scale(2f);
-        ctx.drawText(text, headline, 0, 0, flash ? 0xFFFFFFFF : 0xFFFFFF55, true);
+        ctx.text(text, headline, 0, 0, flash ? 0xFFFFFFFF : 0xFFFFFF55, true);
         matrices.popMatrix();
 
         long elapsed = Math.max(0L, System.currentTimeMillis() - alarm.getTriggeredAtMs()) / 1000L;
         String info = "Der Alarm der " + name + " wurde ausgelöst — seit "
                 + String.format("%d:%02d", elapsed / 60, elapsed % 60);
-        ctx.drawText(text, info, (width - text.getWidth(info)) / 2, top + 30, 0xFFFFFFFF, true);
+        ctx.text(text, info, (width - text.width(info)) / 2, top + 30, 0xFFFFFFFF, true);
     }
 }

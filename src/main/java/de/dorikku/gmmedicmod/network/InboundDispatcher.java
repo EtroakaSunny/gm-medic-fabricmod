@@ -9,11 +9,10 @@ import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-
 import java.util.Locale;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 public final class InboundDispatcher {
 
@@ -24,7 +23,7 @@ public final class InboundDispatcher {
     private InboundDispatcher() {}
 
     public static void dispatch(String rawJson) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         client.execute(() -> handle(rawJson));
     }
 
@@ -55,11 +54,10 @@ public final class InboundDispatcher {
         conn.startPeriodicTasks();
         GMMedic.LOGGER.info("[ApiConnection] Authenticated successfully");
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            client.player.sendMessage(
-                Text.literal("[GM-Medic] Verbunden und authentifiziert.").formatted(Formatting.GREEN),
-                true
+            client.player.sendOverlayMessage(
+                Component.literal("[GM-Medic] Verbunden und authentifiziert.").withStyle(ChatFormatting.GREEN)
             );
         }
     }
@@ -68,13 +66,12 @@ public final class InboundDispatcher {
         String reason = obj.has("reason") ? obj.get("reason").getAsString() : "UNKNOWN";
         GMMedic.LOGGER.warn("[ApiConnection] AUTH_FAIL: {}", reason);
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
             String token = ApiConfig.getInstance().getAuthToken();
-            client.player.sendMessage(
-                Text.literal("[GM-Medic] AUTH fehlgeschlagen: " + reason + ". Token: " + token)
-                    .formatted(Formatting.RED),
-                false
+            client.player.sendSystemMessage(
+                Component.literal("[GM-Medic] AUTH fehlgeschlagen: " + reason + ". Token: " + token)
+                    .withStyle(ChatFormatting.RED)
             );
         }
     }
@@ -106,7 +103,7 @@ public final class InboundDispatcher {
                 ? String.valueOf(Math.round(obj.get("distanceBlocks").getAsDouble()))
                 : null;
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
             String suffix;
             if (caller != null && dist != null) suffix = " (für " + caller + ", " + dist + "m)";
@@ -114,7 +111,7 @@ public final class InboundDispatcher {
             else if (dist != null)              suffix = " (" + dist + "m)";
             else                                suffix = "";
             String text = "GM-Medic: Der nächste Medic ist: " + nearestMedic + suffix;
-            client.player.sendMessage(Text.literal(text).formatted(Formatting.AQUA), false);
+            client.player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.AQUA));
         }
         GMMedic.LOGGER.info("[ApiConnection] Nearest medic for {}: {}", callId, nearestMedic);
     }
@@ -193,13 +190,13 @@ public final class InboundDispatcher {
     private static void announceMedicNearby(EmergencyCall call, String medicName, double distanceBlocks) {
         // The broadcast reaches every connected client; only on-duty medics care.
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
         String caller = call.getCallerName();
         String text = "[GM-Medic] " + medicName + " ist bereits in der Nähe"
                 + (caller != null ? " von " + caller : "")
                 + " (" + Math.round(distanceBlocks) + "m) und dürfte gleich ankommen.";
-        client.player.sendMessage(Text.literal(text).formatted(Formatting.AQUA), false);
+        client.player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.AQUA));
     }
 
     private static String optString(JsonObject obj, String key) {

@@ -6,14 +6,13 @@ import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.mixin.BossBarHudAccessor;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.hud.ClientBossBar;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.LerpingBossEvent;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Automates the repetitive vehicle steps an on-duty medic performs:
@@ -75,28 +74,28 @@ public final class VehicleAutomation {
      * instead and are excluded — their flight paths are not streets. Used to tag
      * location updates so the server only learns the street network from car traces.
      */
-    public static boolean isDrivingCar(MinecraftClient client) {
-        ClientPlayerEntity player = client.player;
-        if (player == null || !player.hasVehicle()) return false;
-        PlayerInventory inv = player.getInventory();
+    public static boolean isDrivingCar(Minecraft client) {
+        LocalPlayer player = client.player;
+        if (player == null || !player.isPassenger()) return false;
+        Inventory inv = player.getInventory();
         boolean hasCarItem = false;
-        for (int i = 0; i < PlayerInventory.getHotbarSize(); i++) {
-            ItemStack stack = inv.getStack(i);
+        for (int i = 0; i < Inventory.getSelectionSize(); i++) {
+            ItemStack stack = inv.getItem(i);
             if (stack.isEmpty()) continue;
-            String name = stripColorCodes(stack.getName().getString());
+            String name = stripColorCodes(stack.getHoverName().getString());
             if (name.equalsIgnoreCase(HELICOPTER_ITEM_NAME)) return false;
             if (name.equals(GEAR_ITEM_NAME)) hasCarItem = true;
         }
         return hasCarItem;
     }
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         if (client.player == null || !ApiConnection.getInstance().isFeatureUnlocked()) {
             reset();
             return;
         }
-        ClientPlayerEntity player = client.player;
-        boolean riding = player.hasVehicle();
+        LocalPlayer player = client.player;
+        boolean riding = player.isPassenger();
 
         if (riding && !wasRiding) {
             onMount(client, player);
@@ -128,7 +127,7 @@ public final class VehicleAutomation {
         }
     }
 
-    private static void onMount(MinecraftClient client, ClientPlayerEntity player) {
+    private static void onMount(Minecraft client, LocalPlayer player) {
         motorStarted = false;
         gearHandled = false;
         motorBarSeen = false;
@@ -146,7 +145,7 @@ public final class VehicleAutomation {
      * late (e.g. "always" enabled while already seated) still gets its gear set once the boss bar
      * clears.
      */
-    private static void startMotor(MinecraftClient client) {
+    private static void startMotor(Minecraft client) {
         sendCommand(client, "vehicles motor");
         motorStarted = true;
         gearHandled = false;
@@ -178,12 +177,12 @@ public final class VehicleAutomation {
      * if it is elsewhere in the hotbar it is selected first and then dropped, and if it is nowhere to be
      * found nothing is dropped — a different item is never thrown away.</p>
      */
-    private static void detectVehicleItem(MinecraftClient client, ClientPlayerEntity player, VehicleConfig cfg, boolean inDuty) {
+    private static void detectVehicleItem(Minecraft client, LocalPlayer player, VehicleConfig cfg, boolean inDuty) {
         long elapsed = System.currentTimeMillis() - mountTimeMs;
 
         // Helicopter: identified by the in-hand menu item — never drop a gear, skip the siren.
-        ItemStack held = player.getInventory().getSelectedStack();
-        if (!held.isEmpty() && stripColorCodes(held.getName().getString()).equalsIgnoreCase(HELICOPTER_ITEM_NAME)) {
+        ItemStack held = player.getInventory().getSelectedItem();
+        if (!held.isEmpty() && stripColorCodes(held.getHoverName().getString()).equalsIgnoreCase(HELICOPTER_ITEM_NAME)) {
             isHelicopter = true;
             gearHandled = true;
             GMMedic.LOGGER.info("[GM-Medic] Helicopter detected — skipping gear drop and siren");
@@ -217,11 +216,11 @@ public final class VehicleAutomation {
     }
 
     /** Drops the {@code Gangwahlhebel} to set the gear, selecting it from the hotbar first if needed. */
-    private static void dropGearItem(MinecraftClient client, ClientPlayerEntity player) {
-        PlayerInventory inv = player.getInventory();
+    private static void dropGearItem(Minecraft client, LocalPlayer player) {
+        Inventory inv = player.getInventory();
 
-        if (isGearItem(inv.getSelectedStack())) {
-            player.dropSelectedItem(false);
+        if (isGearItem(inv.getSelectedItem())) {
+            player.drop(false);
             GMMedic.LOGGER.info("[GM-Medic] Gear item '{}' dropped to set gear shift", GEAR_ITEM_NAME);
             return;
         }
@@ -233,37 +232,37 @@ public final class VehicleAutomation {
         }
 
         inv.setSelectedSlot(slot);
-        if (player.networkHandler != null) {
-            player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
+        if (player.connection != null) {
+            player.connection.send(new ServerboundSetCarriedItemPacket(slot));
         }
-        player.dropSelectedItem(false);
+        player.drop(false);
         GMMedic.LOGGER.info("[GM-Medic] Selected '{}' from hotbar slot {} and dropped it to set gear shift",
                 GEAR_ITEM_NAME, slot);
     }
 
-    private static int findGearHotbarSlot(PlayerInventory inv) {
-        for (int i = 0; i < PlayerInventory.getHotbarSize(); i++) {
-            if (isGearItem(inv.getStack(i))) return i;
+    private static int findGearHotbarSlot(Inventory inv) {
+        for (int i = 0; i < Inventory.getSelectionSize(); i++) {
+            if (isGearItem(inv.getItem(i))) return i;
         }
         return -1;
     }
 
     private static boolean isGearItem(ItemStack stack) {
-        return !stack.isEmpty() && stripColorCodes(stack.getName().getString()).equals(GEAR_ITEM_NAME);
+        return !stack.isEmpty() && stripColorCodes(stack.getHoverName().getString()).equals(GEAR_ITEM_NAME);
     }
 
     /** True while a boss bar whose text contains {@code Motor startet} is on screen. */
-    private static boolean isMotorBossBarPresent(MinecraftClient client) {
-        if (client.inGameHud == null) return false;
-        BossBarHudAccessor hud = (BossBarHudAccessor) client.inGameHud.getBossBarHud();
-        for (ClientBossBar bar : hud.gmmedic$getBossBars().values()) {
+    private static boolean isMotorBossBarPresent(Minecraft client) {
+        if (client.gui == null) return false;
+        BossBarHudAccessor hud = (BossBarHudAccessor) client.gui.hud.getBossOverlay();
+        for (LerpingBossEvent bar : hud.gmmedic$getBossBars().values()) {
             String name = stripColorCodes(bar.getName().getString()).toLowerCase(Locale.ROOT);
             if (name.contains(MOTOR_BOSS_BAR_TEXT)) return true;
         }
         return false;
     }
 
-    private static void handleSneakExit(MinecraftClient client, VehicleConfig cfg) {
+    private static void handleSneakExit(Minecraft client, VehicleConfig cfg) {
         forceSneak = false;
 
         if (exitInProgress) {
@@ -283,7 +282,7 @@ public final class VehicleAutomation {
         }
 
         // Only delay an exit when the mod's siren is on and must be turned off first.
-        boolean rawSneak = client.options.sneakKey.isPressed();
+        boolean rawSneak = client.options.keyShift.isDown();
         if (rawSneak && sirenOnByMod && !isHelicopter) {
             exitInProgress = true;
             dismountDelayTicks = Math.max(1, cfg.getExitDelayTicks());
@@ -294,7 +293,7 @@ public final class VehicleAutomation {
         }
     }
 
-    private static void manageSiren(MinecraftClient client, VehicleConfig cfg, boolean inDuty) {
+    private static void manageSiren(Minecraft client, VehicleConfig cfg, boolean inDuty) {
         if (isHelicopter) return;
         if (!cfg.isSirenEnabled() || !(inDuty || cfg.isSirenAlways())) return;
 
@@ -314,9 +313,9 @@ public final class VehicleAutomation {
      * True when an active call is currently accepted by the local player. The siren must not react
      * to a call merely being created, nor to one accepted by another medic on duty.
      */
-    private static boolean hasCallAcceptedByMe(MinecraftClient client) {
+    private static boolean hasCallAcceptedByMe(Minecraft client) {
         if (client.player == null) return false;
-        String me = EmergencyCallManager.normalizeCallerName(client.player.getNameForScoreboard());
+        String me = EmergencyCallManager.normalizeCallerName(client.player.getScoreboardName());
         if (me == null) return false;
         for (EmergencyCall call : EmergencyCallManager.getInstance().getActiveCalls()) {
             if (call.isPending() || call.isResolved() || call.isRejected()) continue;
@@ -326,9 +325,9 @@ public final class VehicleAutomation {
         return false;
     }
 
-    private static void sendCommand(MinecraftClient client, String command) {
-        if (client.player != null && client.player.networkHandler != null) {
-            client.player.networkHandler.sendChatCommand(command);
+    private static void sendCommand(Minecraft client, String command) {
+        if (client.player != null && client.player.connection != null) {
+            client.player.connection.sendCommand(command);
         }
     }
 

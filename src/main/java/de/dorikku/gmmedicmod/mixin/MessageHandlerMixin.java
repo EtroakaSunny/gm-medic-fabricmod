@@ -1,8 +1,8 @@
 package de.dorikku.gmmedicmod.mixin;
 
-import net.minecraft.client.network.message.MessageHandler;
+import net.minecraft.client.multiplayer.chat.ChatListener;
 import org.spongepowered.asm.mixin.Mixin;
 
-@Mixin(MessageHandler.class)
+@Mixin(ChatListener.class)
 public class MessageHandlerMixin {
 }

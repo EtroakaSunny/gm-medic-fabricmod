@@ -3,11 +3,11 @@ package de.dorikku.gmmedicmod.manager;
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import de.dorikku.gmmedicmod.network.OutboundMessages;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.sound.PositionedSoundInstance;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 
 /**
  * Tracks the bank alarm announced in the D-Funk ("Der Alarm der &lt;Bank&gt; wurde
@@ -82,20 +82,19 @@ public class AlarmManager {
      */
     private void announce(String name) {
         if (EmergencyCallManager.getInstance().isInDuty()) return;
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
-        client.inGameHud.setTitleTicks(5, 70, 20);
-        client.inGameHud.setTitle(Text.literal("⚠ ALARM ⚠").formatted(Formatting.RED, Formatting.BOLD));
-        client.inGameHud.setSubtitle(Text.literal("Der Alarm der " + name + " wurde ausgelöst!").formatted(Formatting.YELLOW));
-        client.getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.EVENT_RAID_HORN, 1.0F));
-        client.player.sendMessage(
-                Text.literal("[GM-Medic] ⚠ ALARM: Der Alarm der " + name + " wurde ausgelöst!")
-                        .formatted(Formatting.RED, Formatting.BOLD),
-                false
+        client.gui.hud.setTimes(5, 70, 20);
+        client.gui.hud.setTitle(Component.literal("⚠ ALARM ⚠").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        client.gui.hud.setSubtitle(Component.literal("Der Alarm der " + name + " wurde ausgelöst!").withStyle(ChatFormatting.YELLOW));
+        client.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.RAID_HORN, 1.0F));
+        client.player.sendSystemMessage(
+                Component.literal("[GM-Medic] ⚠ ALARM: Der Alarm der " + name + " wurde ausgelöst!")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
         );
     }
 
     private static String getUsername() {
-        return MinecraftClient.getInstance().getSession().getUsername();
+        return Minecraft.getInstance().getUser().getName();
     }
 }
