@@ -1,11 +1,11 @@
 package de.dorikku.gmmedicmod;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import de.dorikku.gmmedicmod.command.DebugCommands;
-import de.dorikku.gmmedicmod.command.HudCommands;
-import de.dorikku.gmmedicmod.command.VehicleCommands;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
+import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
@@ -15,6 +15,7 @@ import de.dorikku.gmmedicmod.render.CallTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -24,6 +25,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.network.chat.Component;
@@ -31,6 +34,15 @@ import net.minecraft.resources.Identifier;
 import java.util.Locale;
 
 public class GMMedicClient implements ClientModInitializer {
+
+    private static final KeyMapping.Category KEY_CATEGORY =
+            KeyMapping.Category.register(Identifier.fromNamespaceAndPath(GMMedic.MOD_ID, "main"));
+
+    private static final KeyMapping OPEN_MENU_KEY = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+            "key.gm-medic.open_menu",
+            InputConstants.UNKNOWN.getValue(),
+            KEY_CATEGORY
+    ));
 
     @Override
     public void onInitializeClient() {
@@ -40,6 +52,16 @@ public class GMMedicClient implements ClientModInitializer {
         VehicleConfig.getInstance(); // pre-load vehicle automation config
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
+
+        // Keybind opens the settings menu directly; only fires outside of another open screen,
+        // matching how most single-purpose mod-settings hotkeys behave.
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (OPEN_MENU_KEY.consumeClick()) {
+                if (client.screen == null) {
+                    client.setScreen(new GMMedicMenuScreen(null));
+                }
+            }
+        });
 
         ClientReceiveMessageEvents.GAME.register(ChatMessageHandler::onGameMessage);
 
@@ -72,8 +94,7 @@ public class GMMedicClient implements ClientModInitializer {
         }
 
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerStatusCommand);
-        ClientCommandRegistrationCallback.EVENT.register(HudCommands::register);
-        ClientCommandRegistrationCallback.EVENT.register(VehicleCommands::register);
+        ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerMenuCommand);
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerApiCommands);
 
         GMMedic.LOGGER.info("[GM-Medic] Client initialized");
@@ -89,35 +110,19 @@ public class GMMedicClient implements ClientModInitializer {
         }));
     }
 
+    private static void registerMenuCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext registryAccess) {
+        dispatcher.register(ClientCommands.literal("gmmenu").executes(ctx -> {
+            Minecraft.getInstance().setScreen(new GMMedicMenuScreen(null));
+            return 1;
+        }));
+    }
+
+    /**
+     * Only {@code url} stays a command — every other API setting (status, token, reset-token)
+     * moved into {@link GMMedicMenuScreen}'s API tab.
+     */
     private static void registerApiCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext registryAccess) {
         dispatcher.register(ClientCommands.literal("gmapi")
-            .then(ClientCommands.literal("status").executes(ctx -> {
-                ApiConnection conn = ApiConnection.getInstance();
-                ApiConfig cfg = ApiConfig.getInstance();
-                String url = cfg.isConfigured() ? cfg.getServerUrl() : "(nicht konfiguriert)";
-                String state = !cfg.isConfigured() ? "deaktiviert"
-                        : conn.isAuthenticated() ? "verbunden & authentifiziert"
-                        : conn.isConnected() ? "verbunden (nicht auth.)"
-                        : "getrennt";
-                ctx.getSource().sendFeedback(Component.literal("[GM-Medic API] Status: " + state + " | URL: " + url));
-                return 1;
-            }))
-            .then(ClientCommands.literal("token").executes(ctx -> {
-                String token = ApiConfig.getInstance().getAuthToken();
-                ctx.getSource().sendFeedback(Component.literal("[GM-Medic API] Token: " + token));
-                return 1;
-            }))
-            .then(ClientCommands.literal("reset-token").executes(ctx -> {
-                ApiConfig.getInstance().resetAuthToken();
-                ctx.getSource().sendFeedback(
-                    Component.literal("[GM-Medic API] Neues Token generiert. Neuverbindung erforderlich.").withStyle(ChatFormatting.YELLOW)
-                );
-                if (ApiConnection.getInstance().isConnected()) {
-                    ApiConnection.getInstance().disconnect();
-                    ApiConnection.getInstance().connect();
-                }
-                return 1;
-            }))
             .then(ClientCommands.literal("url")
                 .then(ClientCommands.argument("serverUrl", StringArgumentType.greedyString()).executes(ctx -> {
                     String url = StringArgumentType.getString(ctx, "serverUrl");
@@ -138,6 +143,12 @@ public class GMMedicClient implements ClientModInitializer {
                     }
                     return 1;
                 })))
+            .executes(ctx -> {
+                ctx.getSource().sendFeedback(Component.literal(
+                        "§eNutze §f/gmapi url <adresse> §e— alle anderen API-Einstellungen findest du über §f/gmmenu§e."
+                ));
+                return 1;
+            })
         );
     }
 }

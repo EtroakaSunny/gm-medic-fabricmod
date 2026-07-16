@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.config.ReviveReplyConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
@@ -97,6 +98,7 @@ public class ChatMessageHandler {
 
         if (isFunk && msg.contains("Ich habe") && msg.contains("wiederbelebt")) {
             extractAndResolve(REVIVE_CALLER, msg, "revived", "Wiederbelebt");
+            maybeSendReviveReply(msg);
             return;
         }
 
@@ -294,6 +296,29 @@ public class ChatMessageHandler {
         } else {
             GMMedic.LOGGER.warn("[GM-Medic] Could not parse caller for {}: {}", reason, msg);
         }
+    }
+
+    /**
+     * Sends an automatic public chat reply right after your own "Ich habe X wiederbelebt!"
+     * broadcast — but only when the local player is the one the FUNK sender name resolves to,
+     * so a call resolved by watching someone else's revive never triggers it.
+     */
+    private static void maybeSendReviveReply(String msg) {
+        if (!ReviveReplyConfig.getInstance().isEnabled()) return;
+
+        String reviver = extractFunkSender(msg);
+        String playerName = getPlayerName();
+        if (reviver == null || playerName == null || !reviver.equalsIgnoreCase(playerName)) return;
+
+        Matcher m = REVIVE_CALLER.matcher(msg);
+        if (!m.find()) return;
+        String target = EmergencyCallManager.normalizeCallerName(m.group(1));
+        if (target == null) return;
+
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.player.connection == null) return;
+        client.player.connection.sendChat(ReviveReplyConfig.getInstance().buildReply(target));
+        GMMedic.LOGGER.info("[GM-Medic] Sent revive auto-reply to {}", target);
     }
 
     private static String extractValue(String msg, String key) {
