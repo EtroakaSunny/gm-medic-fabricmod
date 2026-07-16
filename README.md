@@ -33,13 +33,18 @@ you can focus on the response.
   - **Sneak-exit** — turn the siren off first and briefly delay your dismount when you
     sneak out (configurable delay). Helicopters are detected and skipped.
 
-  Each feature can be toggled, and set to run **always** (even off duty).
+  Each feature can be toggled, and set to run **always** (even off duty), from the
+  settings menu (`/gmmenu`).
 - **Bank alarm broadcast** — when the D-Funk (Ⓓ channel) reports
   `Der Alarm der <Bank> wurde ausgelöst`, the alarm is sent to the API server, which
   pushes it to every connected client that is **not on duty**. Those clients get a
   hard-to-miss alert: a title, the raid-horn sound, a chat line and a flashing
   full-width banner that stays until the D-Funk reports
   `Der Bankraub wurde beendet.` (30-minute safety timeout if that line is missed).
+- **Revive auto-reply** — optionally sends an automatic public chat reply right after
+  *your own* "Ich habe X wiederbelebt!" message — only for the medic who actually did
+  the reviving, never for other on-duty medics who just see the broadcast. Toggle and
+  message text are both in the settings menu.
 - **Server API sync (optional)** — connects over WebSocket to an external GM-Medic
   server to sync duty state, calls (new / assigned / resolved / rejected), periodic
   location updates (sent while on duty only) and keep-alive, and to receive
@@ -57,7 +62,22 @@ you can focus on the response.
 
 ---
 
-## Commands
+## Settings menu
+
+Every setting that used to be a chat command — HUD, vehicle automation, and API status/token
+management — now lives in an in-game menu instead:
+
+- Open it with **`/gmmenu`**, or bind a key to it in **Controls → GM Medic** (unbound by
+  default).
+- The menu has three tabs (HUD, vehicle automation, API) plus the revive auto-reply toggle
+  described below.
+
+Only the API server URL stays a command, since it's the one setting you'd want to change
+without leaving the game (e.g. switching servers mid-session):
+
+| Command | Description |
+|---------|-------------|
+| `/gmapi url <serverUrl>` | Set the API server URL (default: `wss://medic.dorikku.de/api`); `off` disables. |
 
 ### Status
 
@@ -65,34 +85,13 @@ you can focus on the response.
 |---------|-------------|
 | `/gmstatus` | Quick overview: duty state and number of active calls. |
 
-### HUD — `/gmhud`
+### Revive auto-reply
 
-| Command | Description |
-|---------|-------------|
-| `/gmhud compact` | Toggle compact HUD layout (smaller display). |
-| `/gmhud highlight` | Toggle highlighting of players with an open call. |
-| `/gmhud highlight range <8-256>` | Set the highlight max distance (blocks). |
-| `/gmhud status` | Show the current HUD settings. |
-
-### Vehicle automation — `/gmvehicle`
-
-| Command | Description |
-|---------|-------------|
-| `/gmvehicle motor on\|off` | Auto-start the motor on entry. |
-| `/gmvehicle gear on\|off` | Auto-set the gear shift. |
-| `/gmvehicle siren on\|off` | Auto-toggle the siren when you have a call. |
-| `/gmvehicle <feature> always on\|off` | Keep a feature active even off duty. |
-| `/gmvehicle exitdelay <1-200>` | Dismount delay in ticks (20 ticks = 1 s). |
-| `/gmvehicle status` | Show the current vehicle-automation settings. |
-
-### Server API — `/gmapi`
-
-| Command | Description |
-|---------|-------------|
-| `/gmapi status` | Show connection state and configured server URL. |
-| `/gmapi token` | Show your authentication token. |
-| `/gmapi reset-token` | Generate a new token (reconnect required). |
-| `/gmapi url <serverUrl>` | Set the API server URL (default: `wss://medic.dorikku.de/api`); `off` disables. |
+When enabled (toggle in `/gmmenu`), the mod sends an automatic public chat reply right after
+**your own** "Ich habe X wiederbelebt!" message — i.e. only when *you* are the medic who
+revived or healed the player, never when you merely see another medic's broadcast. The
+message text is editable in the same menu; `{player}` is replaced with the revived player's
+name.
 
 ---
 
