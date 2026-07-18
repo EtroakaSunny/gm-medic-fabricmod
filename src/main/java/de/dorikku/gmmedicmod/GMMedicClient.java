@@ -99,6 +99,7 @@ public class GMMedicClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerStatusCommand);
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerMenuCommand);
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerApiCommands);
+        ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerVerbalCallCommand);
 
         GMMedic.LOGGER.info("[GM-Medic] Client initialized");
     }
@@ -111,6 +112,18 @@ public class GMMedicClient implements ClientModInitializer {
             ));
             return 1;
         }));
+    }
+
+    /**
+     * Runs entirely client-side (never reaches the server) — the target of the
+     * "[Mündlicher Notruf entgegennehmen]" click hint in {@link ChatMessageHandler}.
+     */
+    private static void registerVerbalCallCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
+        dispatcher.register(ClientCommandManager.literal("gmverbal")
+                .then(ClientCommandManager.argument("officer", StringArgumentType.word()).executes(ctx -> {
+                    ChatMessageHandler.acceptVerbalCall(StringArgumentType.getString(ctx, "officer"));
+                    return 1;
+                })));
     }
 
     private static void registerMenuCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
