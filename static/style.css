@@ -139,7 +139,8 @@ button.ghost.danger:hover { background: var(--danger); color: #fff; }
 
 .add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
-.map-panel { min-height: 0; }
+.map-panel { min-height: 0; grid-row: span 2; }
+#history-panel { grid-column: 3; }
 #map, #nav-map { flex: 1; width: 100%; background: #0e1014; border-radius: 8px; border: 1px solid var(--border); }
 
 /* --- Beta: navigation --- */

@@ -34,6 +34,10 @@ ROSTER_URL = os.environ.get(
 )
 ROSTER_CACHE_SECONDS = int(os.environ.get("GM_ROSTER_CACHE_SECONDS", "60"))
 
+# Resolved calls are kept in a same-day history for the admin GUI, cleared
+# out every local midnight in this timezone (not the container's TZ).
+HISTORY_TIMEZONE = os.environ.get("GM_HISTORY_TIMEZONE", "Europe/Berlin")
+
 # When a call is assigned, if the medic's last known position is within this
 # many blocks of the call, the assignment broadcast notes the medic is
 # already nearby (see ws_mod.CALL_ASSIGNED).

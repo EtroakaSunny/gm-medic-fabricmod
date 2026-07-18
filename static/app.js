@@ -4,7 +4,8 @@ const TOKEN_KEY = "gm_token";
 
 // In-memory live state mirrored from the admin WebSocket.
 const medics = new Map(); // username -> {username,x,y,z,on_duty,last_seen}
-const calls = new Map();  // callId -> call
+const calls = new Map();  // callId -> call (open only — resolved calls move to history)
+const history = new Map(); // callId -> call, resolved earlier today; cleared server-side at midnight
 
 let ws = null;
 let reconnectTimer = null;
@@ -142,9 +143,10 @@ function connectWs() {
 function handleWsMessage(msg) {
     switch (msg.type) {
         case "snapshot":
-            medics.clear(); calls.clear();
+            medics.clear(); calls.clear(); history.clear();
             (msg.medics || []).forEach(m => medics.set(m.username, m));
             (msg.calls || []).forEach(c => calls.set(c.callId, c));
+            (msg.history || []).forEach(c => history.set(c.callId, c));
             break;
         case "medic_update":
             medics.set(msg.medic.username, msg.medic);
@@ -158,9 +160,16 @@ function handleWsMessage(msg) {
         case "call_removed":
             calls.delete(msg.callId);
             break;
+        case "history_update":
+            history.set(msg.call.callId, msg.call);
+            break;
+        case "history_cleared":
+            history.clear();
+            break;
     }
     renderMedics();
     renderCalls();
+    renderHistory();
     updateMap();
 }
 
@@ -234,23 +243,39 @@ function renderMedics() {
 
 // --- Calls ---
 
+function _callRowHtml(c) {
+    const typeBadge = c.callType === "DEATH"
+        ? `<span class="badge death">Tod</span>`
+        : `<span class="badge ecall">E-Call</span>`;
+    const statusBadge = c.resolved ? `<span class="badge resolved">erledigt</span>` : "";
+    const medic = c.assignedMedic ? `<div class="meta">Sanitäter: ${escapeHtml(c.assignedMedic)}</div>` : "";
+    const loc = (c.locationName && c.locationName.length)
+        ? escapeHtml(c.locationName)
+        : (c.x != null ? `X ${Math.round(c.x)}, Z ${Math.round(c.z)}` : "unbekannt");
+    return `<div class="row"><span class="name">${escapeHtml(c.callerName || "?")}</span>${typeBadge}${statusBadge}</div>
+            <div class="meta">${escapeHtml(c.reason || "")}</div>
+            <div class="meta">${loc}</div>${medic}`;
+}
+
 function renderCalls() {
     const ul = document.getElementById("call-list");
     ul.innerHTML = "";
     const list = [...calls.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     for (const c of list) {
         const li = document.createElement("li");
-        const typeBadge = c.callType === "DEATH"
-            ? `<span class="badge death">Tod</span>`
-            : `<span class="badge ecall">E-Call</span>`;
-        const statusBadge = c.resolved ? `<span class="badge resolved">erledigt</span>` : "";
-        const medic = c.assignedMedic ? `<div class="meta">Sanitäter: ${escapeHtml(c.assignedMedic)}</div>` : "";
-        const loc = (c.locationName && c.locationName.length)
-            ? escapeHtml(c.locationName)
-            : (c.x != null ? `X ${Math.round(c.x)}, Z ${Math.round(c.z)}` : "unbekannt");
-        li.innerHTML = `<div class="row"><span class="name">${escapeHtml(c.callerName || "?")}</span>${typeBadge}${statusBadge}</div>
-                        <div class="meta">${escapeHtml(c.reason || "")}</div>
-                        <div class="meta">${loc}</div>${medic}`;
+        li.innerHTML = _callRowHtml(c);
+        ul.appendChild(li);
+    }
+}
+
+function renderHistory() {
+    const ul = document.getElementById("history-list");
+    if (!ul) return;
+    ul.innerHTML = "";
+    const list = [...history.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    for (const c of list) {
+        const li = document.createElement("li");
+        li.innerHTML = _callRowHtml(c);
         ul.appendChild(li);
     }
 }

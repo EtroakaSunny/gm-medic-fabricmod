@@ -3,11 +3,16 @@
 Everything here runs inside uvicorn's single asyncio event loop, so no locks
 are required. Mutating helpers fan out changes to connected admin GUIs.
 """
+import asyncio
 import json
 import math
 import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import WebSocket
+
+from . import config
 
 
 def safe_float(v):
@@ -28,6 +33,15 @@ def _now_ms() -> int:
 # Safety net: never keep a bank alarm active longer than this.
 ALARM_MAX_AGE_MS = 30 * 60 * 1000
 
+
+def _seconds_until_next_midnight(tz_name: str) -> float:
+    tz = ZoneInfo(tz_name)
+    now = datetime.now(tz)
+    tomorrow = (now + timedelta(days=1)).date()
+    next_midnight = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=tz)
+    return (next_midnight - now).total_seconds()
+
+
 # Which view permission a GUI connection needs to receive each update type.
 # The map draws medics AND calls, so "map" qualifies for both feeds.
 _GUI_MSG_PERMS = {
@@ -36,6 +50,8 @@ _GUI_MSG_PERMS = {
     "call_update": {"calls", "map"},
     "call_removed": {"calls", "map"},
     "alarm_update": {"calls", "map"},
+    "history_update": {"calls"},
+    "history_cleared": {"calls"},
 }
 
 
@@ -43,8 +59,10 @@ class LiveState:
     def __init__(self) -> None:
         # username -> {x, y, z, on_duty, last_seen}
         self.online: dict[str, dict] = {}
-        # callId -> call dict
+        # callId -> call dict (only calls that are still open)
         self.calls: dict[str, dict] = {}
+        # callId -> call dict, for resolved calls; cleared every local midnight
+        self.history: dict[str, dict] = {}
         # active bank alarm: {alarmName, triggeredBy, triggeredAtMs} or None
         self.alarm: dict | None = None
         # mod websocket -> username
@@ -129,6 +147,29 @@ class LiveState:
     def open_calls(self) -> list[dict]:
         return [c for c in self.calls.values() if not c.get("resolved")]
 
+    def move_call_to_history(self, call_id: str) -> dict | None:
+        """Pop a resolved call out of the active set and file it under history.
+
+        Keeps a same-day record for the admin GUI instead of the call just
+        vanishing from "Aktive Einsätze" the moment it's resolved.
+        """
+        call = self.calls.pop(call_id, None)
+        if call is not None:
+            self.history[call_id] = call
+        return call
+
+    def clear_history(self) -> list[dict]:
+        cleared = list(self.history.values())
+        self.history.clear()
+        return cleared
+
+    async def history_midnight_loop(self) -> None:
+        """Clears the resolved-call history every day at local midnight."""
+        while True:
+            await asyncio.sleep(_seconds_until_next_midnight(config.HISTORY_TIMEZONE))
+            if self.clear_history():
+                await self.broadcast_admin({"type": "history_cleared"})
+
     def active_alarm(self) -> dict | None:
         """The current bank alarm; drops it if the end message was missed."""
         if self.alarm is not None and _now_ms() - self.alarm["triggeredAtMs"] > ALARM_MAX_AGE_MS:
@@ -156,6 +197,7 @@ class LiveState:
             "type": "snapshot",
             "medics": [self.medic_view(u) for u in self.online] if allowed({"medics", "map"}) else [],
             "calls": list(self.calls.values()) if allowed({"calls", "map"}) else [],
+            "history": list(self.history.values()) if allowed({"calls"}) else [],
             "alarm": self.active_alarm() if allowed({"calls", "map"}) else None,
         }
 

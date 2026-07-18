@@ -238,12 +238,18 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             await state.broadcast_mods({"type": "CALL_SYNC", "call": call}, exclude=ws)
 
     elif mtype == "CALL_RESOLVED":
-        call = state.get_call(msg.get("callId"))
+        call_id = msg.get("callId")
+        call = state.get_call(call_id)
         if call is not None:
             call["resolved"] = True
             call["resolveReason"] = msg.get("resolveReason")
-            await state.broadcast_admin({"type": "call_update", "call": call})
             await state.broadcast_mods({"type": "CALL_SYNC", "call": call}, exclude=ws)
+
+            # Move it out of "Aktive Einsätze" into the same-day history
+            # instead of leaving it cluttering the active list forever.
+            state.move_call_to_history(call_id)
+            await state.broadcast_admin({"type": "call_removed", "callId": call_id})
+            await state.broadcast_admin({"type": "history_update", "call": call})
 
     elif mtype == "CALL_REJECTED":
         call = state.get_call(msg.get("callId"))

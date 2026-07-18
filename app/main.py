@@ -18,6 +18,7 @@ from .api_users import router as users_router
 from .map_proxy import router as map_router
 from .nav import nav
 from .security import hash_password
+from .state import state
 from .ws_admin import router as admin_ws_router
 from .ws_mod import router as mod_ws_router
 
@@ -60,10 +61,12 @@ async def lifespan(app: FastAPI):
     nav.load()
     autosave = asyncio.create_task(nav.autosave_loop())
     simplify = asyncio.create_task(nav.simplify_loop())
+    history_cleanup = asyncio.create_task(state.history_midnight_loop())
     log.info("GM-Medic server ready on %s:%s", config.HOST, config.PORT)
     yield
     autosave.cancel()
     simplify.cancel()
+    history_cleanup.cancel()
     nav.save()
 
 
