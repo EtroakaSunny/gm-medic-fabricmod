@@ -169,6 +169,21 @@ public class EmergencyCallManager {
         activeCalls.add(call);
     }
 
+    /**
+     * Finds this client's own active, unresolved local-only call for a caller (see
+     * {@link EmergencyCall#isLocalOnly()}) — used to avoid offering/creating a duplicate
+     * and to resolve it directly (bypassing {@link #resolveCall}, which would fire the
+     * {@link CallEventListener} and sync it to the server).
+     */
+    public EmergencyCall findActiveLocalOnlyCall(String callerName) {
+        for (EmergencyCall call : activeCalls) {
+            if (call.isLocalOnly() && !call.isResolved() && callerMatches(call, callerName)) {
+                return call;
+            }
+        }
+        return null;
+    }
+
     public void removeCallByCallerName(String callerName) {
         activeCalls.removeIf(call -> callerMatches(call, callerName));
     }
