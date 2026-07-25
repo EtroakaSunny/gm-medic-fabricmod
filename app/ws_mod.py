@@ -252,8 +252,19 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             await state.broadcast_admin({"type": "history_update", "call": call})
 
     elif mtype == "CALL_REJECTED":
-        call = state.get_call(msg.get("callId"))
+        call_id = msg.get("callId")
+        call = state.get_call(call_id)
         if call is not None:
             call["rejectedBy"] = msg.get("rejectedBy")
-            await state.broadcast_admin({"type": "call_update", "call": call})
+            call["resolved"] = True
+            call["resolveReason"] = "rejected"
             await state.broadcast_mods({"type": "CALL_SYNC", "call": call}, exclude=ws)
+
+            # Move it out of "Aktive Einsätze" into the same-day history, same as
+            # CALL_RESOLVED — otherwise the call lingers forever as "open" and
+            # find_open_call_by_caller() keeps matching any later, genuinely new
+            # CALL_NEW from the same caller+type against this stale rejected call,
+            # silently swallowing it instead of dispatching a fresh call.
+            state.move_call_to_history(call_id)
+            await state.broadcast_admin({"type": "call_removed", "callId": call_id})
+            await state.broadcast_admin({"type": "history_update", "call": call})
