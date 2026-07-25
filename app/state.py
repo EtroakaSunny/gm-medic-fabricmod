@@ -33,6 +33,10 @@ def _now_ms() -> int:
 # Safety net: never keep a bank alarm active longer than this.
 ALARM_MAX_AGE_MS = 30 * 60 * 1000
 
+# Safety net: auto-resolve an open E-Call (non-DEATH) after this long.
+CALL_TIMEOUT_MS = int(config.CALL_TIMEOUT_MINUTES * 60 * 1000)
+CALL_TIMEOUT_CHECK_INTERVAL_SECONDS = 60
+
 
 def _seconds_until_next_midnight(tz_name: str) -> float:
     tz = ZoneInfo(tz_name)
@@ -169,6 +173,37 @@ class LiveState:
             await asyncio.sleep(_seconds_until_next_midnight(config.HISTORY_TIMEZONE))
             if self.clear_history():
                 await self.broadcast_admin({"type": "history_cleared"})
+
+    def expire_stale_calls(self) -> list[dict]:
+        """Auto-resolve open E-Calls that have sat unhandled past the timeout.
+
+        DEATH calls are excluded — they carry their own game-provided
+        deadline/timer already. Calls without a `timestamp` (shouldn't happen
+        for anything created after this was added) are left alone rather than
+        guessed at.
+        """
+        now = _now_ms()
+        expired = []
+        for call in list(self.calls.values()):
+            if call.get("resolved") or call.get("callType") == "DEATH":
+                continue
+            created = call.get("timestamp")
+            if created is None or now - created < CALL_TIMEOUT_MS:
+                continue
+            call["resolved"] = True
+            call["resolveReason"] = "timeout"
+            self.move_call_to_history(call["callId"])
+            expired.append(call)
+        return expired
+
+    async def call_timeout_loop(self) -> None:
+        """Periodically auto-resolves E-Calls that have been open too long."""
+        while True:
+            await asyncio.sleep(CALL_TIMEOUT_CHECK_INTERVAL_SECONDS)
+            for call in self.expire_stale_calls():
+                await self.broadcast_mods({"type": "CALL_SYNC", "call": call})
+                await self.broadcast_admin({"type": "call_removed", "callId": call["callId"]})
+                await self.broadcast_admin({"type": "history_update", "call": call})
 
     def active_alarm(self) -> dict | None:
         """The current bank alarm; drops it if the end message was missed."""

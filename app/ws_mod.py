@@ -204,6 +204,7 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             "resolved": bool(msg.get("resolved")),
             "assignedMedic": None,
             "reportedBy": username,
+            "timestamp": int(time.time() * 1000),
         }
         stored = state.upsert_call(call)
         await state.broadcast_admin({"type": "call_update", "call": stored})
