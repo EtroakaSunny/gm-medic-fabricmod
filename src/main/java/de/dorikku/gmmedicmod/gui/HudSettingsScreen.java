@@ -34,6 +34,13 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         );
         y += ROW_SPACING;
 
+        this.addDrawableChild(
+                CyclingButtonWidget.onOffBuilder(cfg.isBloodDisplayEnabled())
+                        .build(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Text.literal("Blutspende-Anzeige"),
+                                (btn, value) -> HudConfig.getInstance().setBloodDisplayEnabled(value))
+        );
+        y += ROW_SPACING;
+
         addStepper(x, y, "Highlight-Reichweite",
                 () -> (int) HudConfig.getInstance().getHighlightRange(),
                 value -> HudConfig.getInstance().setHighlightRange(value),
