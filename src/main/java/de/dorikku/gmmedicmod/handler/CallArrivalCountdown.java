@@ -1,5 +1,6 @@
 package de.dorikku.gmmedicmod.handler;
 
+import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -29,6 +30,9 @@ public final class CallArrivalCountdown {
 
     public static void tick(MinecraftClient client) {
         if (endMs == 0L || client.player == null) return;
+        // A selected syringe means BloodDrawAssistant owns the actionbar right now — its
+        // donation status is more important than this countdown, so stay out of its way.
+        if (BloodDrawAssistant.isSyringeSelected(client)) return;
 
         long remainingMs = endMs - System.currentTimeMillis();
         if (remainingMs <= 0) {
