@@ -57,6 +57,17 @@ BLOOD_COOLDOWN_SECONDS = int(os.environ.get("GM_BLOOD_COOLDOWN_SECONDS", "3600")
 # How often the expired-donation sweep runs (see state.blood_prune_loop).
 BLOOD_PRUNE_INTERVAL_SECONDS = int(os.environ.get("GM_BLOOD_PRUNE_INTERVAL_SECONDS", "60"))
 
+# Latest published mod version — only the part before "+" in the mod's version
+# string, e.g. "0.1.0-Beta" (see modversion.py). Left blank, update
+# notifications are switched off entirely, so a forgotten deploy can't nag
+# every medic about a version that doesn't exist yet.
+LATEST_MOD_VERSION = os.environ.get("GM_LATEST_MOD_VERSION", "").strip()
+
+# One general download link handed to every client regardless of branch — a page
+# or folder the medic picks their build from. Blank means the notice names the
+# new version but offers no link.
+MOD_DOWNLOAD_URL = os.environ.get("GM_MOD_DOWNLOAD_URL", "").strip()
+
 # Public GermanMiner BlueMap used as the admin GUI's map background. The GUI
 # fetches it through this server (/map/...) because the map host is HTTP-only
 # and sends no CORS headers. Cache lifetime applies to tiles and settings;

@@ -12,7 +12,7 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from . import config, database, roster
+from . import config, database, modversion, roster
 from .nav import nav
 from .nearest import compute_nearest, distance_to_medic
 from .state import safe_float, state
@@ -94,6 +94,12 @@ async def mod_ws(ws: WebSocket):
         username = msg["username"]
         state.register_mod(ws, username)
         await _send(ws, {"type": "AUTH_OK", "username": username, "expiresAt": expires})
+
+        # Purely informational: tell an out-of-date client that a newer mod
+        # version exists. Nothing is gated on it — the medic keeps every feature.
+        notice = modversion.update_notice(msg.get("modVersion"))
+        if notice is not None:
+            await _send(ws, {"type": "UPDATE_AVAILABLE", **notice})
         await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
 
         # Sync the new client: hand it every currently open call.
