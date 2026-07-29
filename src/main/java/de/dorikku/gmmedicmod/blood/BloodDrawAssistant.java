@@ -1,5 +1,6 @@
 package de.dorikku.gmmedicmod.blood;
 
+import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.network.ApiConnection;
@@ -49,12 +50,15 @@ public final class BloodDrawAssistant {
     }
 
     /**
-     * Whether the actionbar is currently this feature's to use — i.e. a syringe is selected.
-     * Other actionbar features (like {@link de.dorikku.gmmedicmod.handler.CallArrivalCountdown})
-     * check this so they don't overwrite the blood-status message while it's relevant.
+     * Whether the actionbar is currently this feature's to use — i.e. a syringe is selected
+     * and the blood display is switched on. Other actionbar features (like
+     * {@link de.dorikku.gmmedicmod.handler.CallArrivalCountdown}) check this so they don't
+     * overwrite the blood-status message while it's relevant. With the display off this
+     * feature claims nothing, so a held syringe no longer silences those features.
      */
     public static boolean isSyringeSelected(MinecraftClient client) {
-        return client.player != null && isHoldingSyringe(client.player);
+        return HudConfig.getInstance().isBloodDisplayEnabled()
+                && client.player != null && isHoldingSyringe(client.player);
     }
 
     public static void tick(MinecraftClient client) {
@@ -62,6 +66,9 @@ public final class BloodDrawAssistant {
         if (player == null || client.world == null
                 || !ApiConnection.getInstance().isFeatureUnlocked()
                 || !EmergencyCallManager.getInstance().isInDuty()
+                // Display off: no target detection, no status requests, no message. Donations
+                // are still tracked — that runs off the chat line, not this tick.
+                || !HudConfig.getInstance().isBloodDisplayEnabled()
                 || !isHoldingSyringe(player)) {
             reset();
             return;
@@ -118,10 +125,12 @@ public final class BloodDrawAssistant {
     }
 
     private static void showStatus(MinecraftClient client, String name, BloodDonationManager.Result result) {
+        // Wording follows the game's own term ("gespendet"): the cooldown is a donation
+        // interval, so "Spende" reads consistently with the message that starts it.
         String text = switch (result.status()) {
-            case READY    -> "✔ " + name + " — Blut kann abgenommen werden";
-            case COOLDOWN -> "✖ " + name + " — Blutabnahme erst in " + formatRemaining(result.remainingSeconds());
-            case UNKNOWN  -> "… " + name + " — Blutstatus wird abgefragt";
+            case READY    -> "✔ " + name + " — Blutspende möglich";
+            case COOLDOWN -> "✖ " + name + " — Nächste Spende in " + formatRemaining(result.remainingSeconds());
+            case UNKNOWN  -> "… " + name + " — Status wird abgefragt";
         };
         Formatting color = switch (result.status()) {
             case READY    -> Formatting.GREEN;
