@@ -62,3 +62,8 @@ class MedicOut(BaseModel):
     is_active: bool
     online: bool = False
     on_duty: bool = False
+
+
+class ModUpdateSettings(BaseModel):
+    latest_version: str = ""
+    download_url: str = ""

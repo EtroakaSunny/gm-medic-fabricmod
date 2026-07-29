@@ -50,6 +50,7 @@ function applyPermissions() {
     document.getElementById("tab-beta").classList.toggle("hidden", !can("nav"));
     document.getElementById("add-medic-form").classList.toggle("hidden", !isAdmin());
     document.getElementById("user-admin-panel").classList.toggle("hidden", !isAdmin());
+    document.getElementById("tab-admin").classList.toggle("hidden", !isAdmin());
     // Re-pack the main grid so hidden panels don't leave empty columns.
     const cols = [];
     if (can("medics")) cols.push("280px");
@@ -436,6 +437,7 @@ const TABS = {
     main: document.getElementById("main-view"),
     beta: document.getElementById("beta-view"),
     account: document.getElementById("account-view"),
+    admin: document.getElementById("admin-view"),
 };
 
 function showTab(which) {
@@ -445,6 +447,7 @@ function showTab(which) {
     }
     if (which === "beta") initNavView();
     if (which === "account") initAccountView();
+    if (which === "admin") initAdminView();
     requestAnimationFrame(() => {
         if (which === "beta" && navMap) navMap.invalidateSize();
         if (which === "main" && map) map.invalidateSize();
@@ -862,6 +865,39 @@ document.getElementById("add-user-form").addEventListener("submit", async (e) =>
         loadUsers();
     } catch {
         msg.textContent = "Anlegen fehlgeschlagen.";
+    }
+});
+
+// --- Administration: mod update settings ---
+
+async function initAdminView() {
+    if (!isAdmin()) return;
+    try {
+        const res = await api("/api/settings/mod-update");
+        const s = await res.json();
+        document.getElementById("mod-update-version").value = s.latest_version || "";
+        document.getElementById("mod-update-url").value = s.download_url || "";
+    } catch {}
+}
+
+document.getElementById("mod-update-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("mod-update-msg");
+    try {
+        const res = await api("/api/settings/mod-update", {
+            method: "PUT",
+            body: JSON.stringify({
+                latest_version: document.getElementById("mod-update-version").value.trim(),
+                download_url: document.getElementById("mod-update-url").value.trim(),
+            }),
+        });
+        if (!res.ok) {
+            msg.textContent = (await res.json().catch(() => null))?.detail || "Speichern fehlgeschlagen.";
+            return;
+        }
+        msg.textContent = "Gespeichert.";
+    } catch {
+        msg.textContent = "Speichern fehlgeschlagen.";
     }
 });
 

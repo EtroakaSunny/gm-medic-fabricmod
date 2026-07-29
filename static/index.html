@@ -28,6 +28,7 @@
                 <button id="tab-main" class="tab active">Leitstelle</button>
                 <button id="tab-beta" class="tab">Navigation <span class="beta-badge">Beta</span></button>
                 <button id="tab-account" class="tab">Konto</button>
+                <button id="tab-admin" class="tab hidden">Administration</button>
             </nav>
             <span id="conn-status" class="conn-status">verbinde…</span>
             <button id="logout-btn" class="ghost">Abmelden</button>
@@ -106,6 +107,23 @@
                     <span><i class="line fast"></i> schnell</span>
                     <span><i class="line route"></i> Route</span>
                 </div>
+            </section>
+        </main>
+
+        <main id="admin-view" class="account-grid hidden">
+            <section class="panel">
+                <h2>Mod-Update</h2>
+                <p class="meta">Legt fest, welche Mod-Version aktuell ist. Sanitäter mit einer
+                    älteren Version werden beim Verbinden benachrichtigt und in der
+                    Sanitäter-Liste mit "Update verfügbar" markiert.</p>
+                <form id="mod-update-form" class="add-form">
+                    <label class="meta" for="mod-update-version">Aktuelle Version</label>
+                    <input id="mod-update-version" type="text" placeholder="z. B. 0.1.0-Beta" autocomplete="off">
+                    <label class="meta" for="mod-update-url">Download-URL (optional)</label>
+                    <input id="mod-update-url" type="url" placeholder="https://…" autocomplete="off">
+                    <button type="submit">Speichern</button>
+                    <p id="mod-update-msg" class="meta"></p>
+                </form>
             </section>
         </main>
 

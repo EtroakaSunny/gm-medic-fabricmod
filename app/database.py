@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS tokens (
     bound_at   INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -210,3 +215,20 @@ def delete_tokens_for_user(username: str) -> int:
     with _conn() as conn:
         cur = conn.execute("DELETE FROM tokens WHERE username = ?", (username,))
         return cur.rowcount
+
+
+# --- Server-wide settings (key/value, admin-editable at runtime) ---
+
+def get_setting(key: str, default: str = "") -> str:
+    with _conn() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row is not None else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )

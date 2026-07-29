@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config, database
 from .api_admin import router as api_router
 from .api_nav import router as nav_router
+from .api_settings import router as settings_router
 from .api_users import router as users_router
 from .map_proxy import router as map_router
 from .nav import nav
@@ -115,6 +116,7 @@ async def index() -> HTMLResponse:
 # REST + WebSocket routes are registered before the static mount so they win.
 app.include_router(api_router)
 app.include_router(users_router)
+app.include_router(settings_router)
 app.include_router(nav_router)
 app.include_router(mod_ws_router)
 app.include_router(admin_ws_router)

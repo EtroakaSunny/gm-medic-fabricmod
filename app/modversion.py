@@ -12,9 +12,21 @@ targets, so a 1.21.10 client must not be judged against a "26.2" string.
 """
 import re
 
-from . import config
+from . import config, database
 
 _NUMERIC_RE = re.compile(r"^\d+$")
+
+# DB-backed so an admin can change them from the GUI without a redeploy; the
+# GM_LATEST_MOD_VERSION / GM_MOD_DOWNLOAD_URL env vars only seed the initial
+# value (see database.get_setting's default param).
+
+
+def latest_version() -> str:
+    return database.get_setting("latest_mod_version", config.LATEST_MOD_VERSION).strip()
+
+
+def download_url() -> str:
+    return database.get_setting("mod_download_url", config.MOD_DOWNLOAD_URL).strip()
 
 
 def split_version(raw: str | None) -> tuple[str, str]:
@@ -62,7 +74,7 @@ def update_notice(raw_client_version: str | None) -> dict | None:
     Returns None when no latest version is configured, so leaving
     ``GM_LATEST_MOD_VERSION`` unset switches notifications off entirely.
     """
-    latest = config.LATEST_MOD_VERSION
+    latest = latest_version()
     if not latest:
         return None
 
@@ -76,6 +88,7 @@ def update_notice(raw_client_version: str | None) -> dict | None:
         "currentVersion": client_mod_version,
         "latestVersion": latest,
     }
-    if config.MOD_DOWNLOAD_URL:
-        notice["downloadUrl"] = config.MOD_DOWNLOAD_URL
+    url = download_url()
+    if url:
+        notice["downloadUrl"] = url
     return notice

@@ -313,7 +313,7 @@ class LiveState:
             "on_duty": info.get("on_duty", False),
             "last_seen": info.get("last_seen"),
             "mod_version": mod_version or None,
-            "mod_outdated": modversion.is_outdated(mod_version, config.LATEST_MOD_VERSION),
+            "mod_outdated": modversion.is_outdated(mod_version, modversion.latest_version()),
         }
 
     def snapshot(self, permissions: set | None = None) -> dict:
