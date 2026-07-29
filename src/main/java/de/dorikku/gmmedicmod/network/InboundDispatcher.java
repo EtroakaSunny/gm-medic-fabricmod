@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
@@ -199,6 +200,8 @@ public final class InboundDispatcher {
     }
 
     private static void announceBloodDraw(String playerName, String medicName, long readyAtMs) {
+        // Display off — the cooldown was still cached by the caller, this only skips the note.
+        if (!HudConfig.getInstance().isBloodDisplayEnabled()) return;
         // The broadcast reaches every connected client; only on-duty medics care.
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
         MinecraftClient client = MinecraftClient.getInstance();
@@ -207,7 +210,7 @@ public final class InboundDispatcher {
         String me = client.getSession() != null ? client.getSession().getUsername() : null;
         if (medicName != null && me != null && medicName.equalsIgnoreCase(me)) return;
 
-        String text = "[GM-Medic] Bei " + playerName + " wurde Blut abgenommen"
+        String text = "[GM-Medic] " + playerName + " hat Blut gespendet"
                 + (medicName != null && !medicName.isBlank() ? " (" + medicName + ")" : "")
                 + " — wieder spendebereit in " + minutesUntil(readyAtMs) + " Min.";
         client.player.sendMessage(Text.literal(text).formatted(Formatting.AQUA), false);
