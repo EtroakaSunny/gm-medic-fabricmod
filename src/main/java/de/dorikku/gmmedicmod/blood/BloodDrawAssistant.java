@@ -48,6 +48,15 @@ public final class BloodDrawAssistant {
         return lookTargetName;
     }
 
+    /**
+     * Whether the actionbar is currently this feature's to use — i.e. a syringe is selected.
+     * Other actionbar features (like {@link de.dorikku.gmmedicmod.handler.CallArrivalCountdown})
+     * check this so they don't overwrite the blood-status message while it's relevant.
+     */
+    public static boolean isSyringeSelected(MinecraftClient client) {
+        return client.player != null && isHoldingSyringe(client.player);
+    }
+
     public static void tick(MinecraftClient client) {
         ClientPlayerEntity player = client.player;
         if (player == null || client.world == null
