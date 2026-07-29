@@ -6,6 +6,7 @@ import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
 import de.dorikku.gmmedicmod.command.DebugCommands;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
+import de.dorikku.gmmedicmod.handler.CallArrivalCountdown;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
@@ -59,6 +60,7 @@ public class GMMedicClient implements ClientModInitializer {
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
 
         // Keybind opens the settings menu directly; only fires outside of another open screen,
         // matching how most single-purpose mod-settings hotkeys behave.
