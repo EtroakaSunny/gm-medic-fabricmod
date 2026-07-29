@@ -99,6 +99,10 @@ async def mod_ws(ws: WebSocket):
         # Sync the new client: hand it every currently open call.
         await _send(ws, {"type": "OPEN_CALLS", "calls": state.open_calls()})
 
+        # ... and every running blood-donation cooldown, so a medic who was not
+        # connected when a donation happened still knows about it.
+        await _send(ws, {"type": "BLOOD_LIST", "draws": state.blood_draws_view()})
+
         # ... and the bank alarm, if one is currently active.
         alarm = state.active_alarm()
         if alarm is not None:
@@ -133,8 +137,9 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
     elif mtype == "DUTY_ON":
         state.set_duty(username, True)
         await state.broadcast_admin({"type": "medic_update", "medic": state.medic_view(username)})
-        # Re-sync on duty start: open calls may have arrived while off duty.
+        # Re-sync on duty start: open calls and donations may have arrived while off duty.
         await _send(ws, {"type": "OPEN_CALLS", "calls": state.open_calls()})
+        await _send(ws, {"type": "BLOOD_LIST", "draws": state.blood_draws_view()})
 
     elif mtype == "DUTY_OFF":
         state.set_duty(username, False)
@@ -269,3 +274,15 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             state.move_call_to_history(call_id)
             await state.broadcast_admin({"type": "call_removed", "callId": call_id})
             await state.broadcast_admin({"type": "history_update", "call": call})
+
+    elif mtype == "BLOOD_DRAWN":
+        # The game server tells only the acting medic ("Du hast das Blut von X
+        # erfolgreich gespendet."), so that one client is the sole source for
+        # this event — fan it out to every medic, the reporter included, so all
+        # of them share the server's authoritative readyAtMs.
+        draw = state.record_blood_draw(msg.get("playerName"), msg.get("medicName") or username)
+        if draw is not None:
+            await state.broadcast_mods({"type": "BLOOD_SYNC", "draw": draw})
+
+    elif mtype == "BLOOD_STATUS_REQUEST":
+        await _send(ws, {"type": "BLOOD_STATUS", **state.blood_status(msg.get("playerName"))})

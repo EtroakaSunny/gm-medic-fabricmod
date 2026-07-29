@@ -67,6 +67,9 @@ class LiveState:
         self.calls: dict[str, dict] = {}
         # callId -> call dict, for resolved calls; cleared every local midnight
         self.history: dict[str, dict] = {}
+        # lowercased player name -> blood-donation record, dropped once the
+        # cooldown has run out (see prune_blood_draws)
+        self.blood_draws: dict[str, dict] = {}
         # active bank alarm: {alarmName, triggeredBy, triggeredAtMs} or None
         self.alarm: dict | None = None
         # mod websocket -> username
@@ -204,6 +207,93 @@ class LiveState:
                 await self.broadcast_mods({"type": "CALL_SYNC", "call": call})
                 await self.broadcast_admin({"type": "call_removed", "callId": call["callId"]})
                 await self.broadcast_admin({"type": "history_update", "call": call})
+
+    # --- Blood donations ---
+
+    @staticmethod
+    def _blood_key(player_name) -> str | None:
+        key = (player_name or "").strip().lower()
+        return key or None
+
+    def prune_blood_draws(self) -> int:
+        """Forget every donation whose cooldown has run out. Returns the count.
+
+        The record *is* the cooldown — there is no separate "has donated" flag —
+        so dropping it leaves no trace of the player at all, which is the point:
+        nothing is kept longer than ``config.BLOOD_COOLDOWN_SECONDS``.
+        """
+        now = _now_ms()
+        expired = [k for k, d in self.blood_draws.items() if d["readyAtMs"] <= now]
+        for key in expired:
+            del self.blood_draws[key]
+        return len(expired)
+
+    def get_blood_draw(self, player_name) -> dict | None:
+        """The player's live donation record, or None if they may donate now."""
+        key = self._blood_key(player_name)
+        if key is None:
+            return None
+        draw = self.blood_draws.get(key)
+        if draw is None:
+            return None
+        if draw["readyAtMs"] <= _now_ms():
+            # Expired between sweeps — drop it here so reads never see stale data.
+            del self.blood_draws[key]
+            return None
+        return draw
+
+    def record_blood_draw(self, player_name, medic_name) -> dict | None:
+        """Start a player's cooldown; None if one is already running.
+
+        Refusing to overwrite a live record is what stops the cooldown from
+        being pushed further out when the same donation is reported twice (a
+        re-parsed chat line, or a second medic reporting the same event).
+        """
+        if self._blood_key(player_name) is None:
+            return None
+        if self.get_blood_draw(player_name) is not None:
+            return None
+        now = _now_ms()
+        draw = {
+            "playerName": (player_name or "").strip(),
+            "medicName": medic_name,
+            "drawnAtMs": now,
+            "readyAtMs": now + config.BLOOD_COOLDOWN_SECONDS * 1000,
+        }
+        self.blood_draws[self._blood_key(player_name)] = draw
+        return draw
+
+    def blood_status(self, player_name) -> dict:
+        """Donation status payload for one player (no message ``type`` field)."""
+        draw = self.get_blood_draw(player_name)
+        if draw is None:
+            return {
+                "playerName": (player_name or "").strip(),
+                "canDonate": True,
+                "readyAtMs": None,
+                "remainingSeconds": 0,
+            }
+        remaining_ms = draw["readyAtMs"] - _now_ms()
+        return {
+            "playerName": draw["playerName"],
+            "canDonate": False,
+            "readyAtMs": draw["readyAtMs"],
+            "remainingSeconds": max(0, -(-remaining_ms // 1000)),  # ceil
+            "medicName": draw.get("medicName"),
+        }
+
+    def blood_draws_view(self) -> list[dict]:
+        """All live donation records, for syncing a freshly connected client."""
+        self.prune_blood_draws()
+        return [dict(d) for d in self.blood_draws.values()]
+
+    async def blood_prune_loop(self) -> None:
+        """Sweeps expired donations so they are dropped even without a reader."""
+        while True:
+            await asyncio.sleep(config.BLOOD_PRUNE_INTERVAL_SECONDS)
+            dropped = self.prune_blood_draws()
+            if dropped:
+                log.info("Blood cooldown expired for %d player(s)", dropped)
 
     def active_alarm(self) -> dict | None:
         """The current bank alarm; drops it if the end message was missed."""

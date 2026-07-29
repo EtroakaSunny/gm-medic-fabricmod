@@ -48,6 +48,15 @@ CALL_TIMEOUT_MINUTES = float(os.environ.get("GM_CALL_TIMEOUT_MINUTES", "20"))
 # already nearby (see ws_mod.CALL_ASSIGNED).
 MEDIC_NEARBY_THRESHOLD_BLOCKS = float(os.environ.get("GM_MEDIC_NEARBY_THRESHOLD_BLOCKS", "150"))
 
+# A player may donate blood again this many seconds after their last donation.
+# Nothing about a donation is kept past this window: the record is what makes
+# the cooldown, so pruning it (state.prune_blood_draws) forgets the player
+# entirely rather than leaving a "has donated" flag behind.
+BLOOD_COOLDOWN_SECONDS = int(os.environ.get("GM_BLOOD_COOLDOWN_SECONDS", "3600"))
+
+# How often the expired-donation sweep runs (see state.blood_prune_loop).
+BLOOD_PRUNE_INTERVAL_SECONDS = int(os.environ.get("GM_BLOOD_PRUNE_INTERVAL_SECONDS", "60"))
+
 # Public GermanMiner BlueMap used as the admin GUI's map background. The GUI
 # fetches it through this server (/map/...) because the map host is HTTP-only
 # and sends no CORS headers. Cache lifetime applies to tiles and settings;
