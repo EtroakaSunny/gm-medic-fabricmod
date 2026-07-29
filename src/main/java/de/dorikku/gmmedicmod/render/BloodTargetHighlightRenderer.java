@@ -56,6 +56,7 @@ public final class BloodTargetHighlightRenderer {
         if (client == null || client.world == null || client.player == null) return;
         if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
+        if (!HudConfig.getInstance().isBloodDisplayEnabled()) return;
         if (!HudConfig.getInstance().isHighlightEnabled()) return;
 
         String targetName = BloodDrawAssistant.getLookTargetName();
@@ -69,10 +70,11 @@ public final class BloodTargetHighlightRenderer {
             case COOLDOWN -> COOLDOWN_RGB;
             case UNKNOWN  -> UNKNOWN_RGB;
         };
+        // Kept short — this floats in the world — but same "Spende" wording as the actionbar.
         String label = switch (result.status()) {
-            case READY    -> "Blut abnehmbar";
+            case READY    -> "Spende möglich";
             case COOLDOWN -> "Noch " + BloodDrawAssistant.formatRemaining(result.remainingSeconds());
-            case UNKNOWN  -> "Blutstatus …";
+            case UNKNOWN  -> "Status …";
         };
         int labelColor = switch (result.status()) {
             case READY    -> READY_TEXT_COLOR;
