@@ -92,7 +92,7 @@ async def mod_ws(ws: WebSocket):
             return
 
         username = msg["username"]
-        state.register_mod(ws, username)
+        state.register_mod(ws, username, msg.get("modVersion"))
         await _send(ws, {"type": "AUTH_OK", "username": username, "expiresAt": expires})
 
         # Purely informational: tell an out-of-date client that a newer mod

@@ -217,13 +217,18 @@ function renderMedics() {
             display: m.display_name || m.username,
             online: !!live,
             on_duty: live ? live.on_duty : false,
+            mod_version: live ? live.mod_version : null,
+            mod_outdated: live ? live.mod_outdated : false,
             inDb: true,
         };
     });
     db.forEach(m => seen.add(m.username));
     // Online medics not (yet) in the allow-list snapshot.
     medics.forEach((m, u) => {
-        if (!seen.has(u)) entries.push({ username: u, display: u, online: true, on_duty: m.on_duty, inDb: false });
+        if (!seen.has(u)) entries.push({
+            username: u, display: u, online: true, on_duty: m.on_duty,
+            mod_version: m.mod_version, mod_outdated: m.mod_outdated, inDb: false,
+        });
     });
 
     entries.sort((a, b) => (b.online - a.online) || a.username.localeCompare(b.username));
@@ -233,9 +238,12 @@ function renderMedics() {
         const status = !e.online ? `<span class="badge off">offline</span>`
             : e.on_duty ? `<span class="badge duty">im Dienst</span>`
             : `<span class="badge off">außer Dienst</span>`;
+        const version = e.mod_version ? ` · v${escapeHtml(e.mod_version)}` : "";
+        const outdated = e.mod_outdated
+            ? `<span class="badge outdated" title="Neuere Mod-Version verfügbar">Update verfügbar</span>` : "";
         const del = (e.inDb && isAdmin()) ? `<button class="del" title="Entfernen">×</button>` : "";
         li.innerHTML = `<div class="row"><span class="name">${escapeHtml(e.display)}</span>${status}</div>
-                        <div class="row"><span class="meta">${escapeHtml(e.username)}</span>${del}</div>`;
+                        <div class="row"><span class="meta">${escapeHtml(e.username)}${version}</span><span>${outdated}${del}</span></div>`;
         if (del) li.querySelector(".del").addEventListener("click", () => removeMedic(e.username));
         ul.appendChild(li);
     }

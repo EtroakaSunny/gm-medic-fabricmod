@@ -132,6 +132,7 @@ button.ghost.danger:hover { background: var(--danger); color: #fff; }
 .badge.duty { background: rgba(70,196,107,.18); color: var(--accent); }
 .badge.off { background: rgba(139,147,161,.18); color: var(--muted); }
 .badge.ecall { background: rgba(230,148,60,.18); color: var(--ecall); }
+.badge.outdated { background: rgba(230,148,60,.18); color: var(--ecall); }
 .badge.death { background: rgba(229,83,75,.18); color: var(--death); }
 .badge.resolved { background: rgba(139,147,161,.18); color: var(--muted); }
 .del { background: transparent; color: var(--muted); border: none; padding: 2px 6px; cursor: pointer; font-size: 16px; }

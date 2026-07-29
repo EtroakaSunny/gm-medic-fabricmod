@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import WebSocket
 
-from . import config
+from . import config, modversion
 
 
 def safe_float(v):
@@ -79,12 +79,13 @@ class LiveState:
 
     # --- Mod connection registry ---
 
-    def register_mod(self, ws: WebSocket, username: str) -> None:
+    def register_mod(self, ws: WebSocket, username: str, mod_version: str | None = None) -> None:
         self.mod_ws[ws] = username
         info = self.online.setdefault(
             username, {"x": None, "y": None, "z": None, "on_duty": False, "last_seen": _now_ms()}
         )
         info["last_seen"] = _now_ms()
+        info["mod_version"] = mod_version
 
     def unregister_mod(self, ws: WebSocket) -> str | None:
         username = self.mod_ws.pop(ws, None)
@@ -303,6 +304,7 @@ class LiveState:
 
     def medic_view(self, username: str) -> dict:
         info = self.online.get(username, {})
+        mod_version, _ = modversion.split_version(info.get("mod_version"))
         return {
             "username": username,
             "x": info.get("x"),
@@ -310,6 +312,8 @@ class LiveState:
             "z": info.get("z"),
             "on_duty": info.get("on_duty", False),
             "last_seen": info.get("last_seen"),
+            "mod_version": mod_version or None,
+            "mod_outdated": modversion.is_outdated(mod_version, config.LATEST_MOD_VERSION),
         }
 
     def snapshot(self, permissions: set | None = None) -> dict:
