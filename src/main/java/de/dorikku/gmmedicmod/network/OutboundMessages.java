@@ -91,6 +91,29 @@ public final class OutboundMessages {
         return obj.toString();
     }
 
+    /**
+     * Reports that this medic drew and donated a player's blood. The game server tells
+     * only the acting medic, so this client is the single source for the event — the API
+     * server starts the player's cooldown from it and relays it to every other medic.
+     */
+    public static String bloodDrawn(String medicName, String playerName) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("type", "BLOOD_DRAWN");
+        obj.addProperty("medicName", medicName);
+        obj.addProperty("playerName", playerName);
+        obj.addProperty("timestamp", System.currentTimeMillis());
+        return obj.toString();
+    }
+
+    /** Asks whether a player may donate blood again; answered with {@code BLOOD_STATUS}. */
+    public static String bloodStatusRequest(String playerName) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("type", "BLOOD_STATUS_REQUEST");
+        obj.addProperty("playerName", playerName);
+        obj.addProperty("timestamp", System.currentTimeMillis());
+        return obj.toString();
+    }
+
     public static String ping() {
         JsonObject obj = new JsonObject();
         obj.addProperty("type", "PING");

@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
@@ -32,6 +33,9 @@ public final class InboundDispatcher {
                 case "OPEN_CALLS"     -> handleOpenCalls(obj);
                 case "CALL_SYNC"      -> handleCallSync(obj);
                 case "CALL_REMOVED"   -> handleCallRemoved(obj);
+                case "BLOOD_STATUS"   -> handleBloodStatus(obj);
+                case "BLOOD_SYNC"     -> handleBloodSync(obj);
+                case "BLOOD_LIST"     -> handleBloodList(obj);
                 case "PONG"           -> handlePong();
                 case "ERROR"          -> handleError(obj);
                 default               -> GMMedic.LOGGER.debug("[ApiConnection] Unknown inbound type: {}", type);
@@ -119,6 +123,65 @@ public final class InboundDispatcher {
         if (callId != null) EmergencyCallManager.getInstance().removeByCallId(callId);
     }
 
+    /** Answer to a {@code BLOOD_STATUS_REQUEST} for one player. */
+    private static void handleBloodStatus(JsonObject obj) {
+        String playerName = optString(obj, "playerName");
+        if (playerName == null) return;
+        boolean canDonate = obj.has("canDonate") && !obj.get("canDonate").isJsonNull()
+                && obj.get("canDonate").getAsBoolean();
+        BloodDonationManager.getInstance().applyStatus(playerName, canDonate, optLong(obj, "readyAtMs"));
+    }
+
+    /**
+     * A donation another medic reported. The game server only tells the medic who performed
+     * it, so this relay is the only way the rest of the team learns about the cooldown.
+     */
+    private static void handleBloodSync(JsonObject obj) {
+        if (!obj.has("draw") || !obj.get("draw").isJsonObject()) return;
+        JsonObject draw = obj.getAsJsonObject("draw");
+        String playerName = optString(draw, "playerName");
+        if (playerName == null) return;
+        long readyAtMs = optLong(draw, "readyAtMs");
+        BloodDonationManager.getInstance().applyDraw(playerName, readyAtMs);
+        announceBloodDraw(playerName, optString(draw, "medicName"), readyAtMs);
+    }
+
+    /** Bulk sync of running cooldowns on connect/duty start — never announced, this is old news. */
+    private static void handleBloodList(JsonObject obj) {
+        if (!obj.has("draws") || !obj.get("draws").isJsonArray()) return;
+        BloodDonationManager manager = BloodDonationManager.getInstance();
+        int count = 0;
+        for (JsonElement el : obj.getAsJsonArray("draws")) {
+            if (!el.isJsonObject()) continue;
+            JsonObject draw = el.getAsJsonObject();
+            String playerName = optString(draw, "playerName");
+            if (playerName == null) continue;
+            manager.applyDraw(playerName, optLong(draw, "readyAtMs"));
+            count++;
+        }
+        GMMedic.LOGGER.info("[ApiConnection] Synced {} blood-donation cooldown(s)", count);
+    }
+
+    private static void announceBloodDraw(String playerName, String medicName, long readyAtMs) {
+        // The broadcast reaches every connected client; only on-duty medics care.
+        if (!EmergencyCallManager.getInstance().isInDuty()) return;
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+        // The reporting medic already saw the game server's own confirmation.
+        String me = client.getSession() != null ? client.getSession().getUsername() : null;
+        if (medicName != null && me != null && medicName.equalsIgnoreCase(me)) return;
+
+        String text = "[GM-Medic] Bei " + playerName + " wurde Blut abgenommen"
+                + (medicName != null && !medicName.isBlank() ? " (" + medicName + ")" : "")
+                + " — wieder spendebereit in " + minutesUntil(readyAtMs) + " Min.";
+        client.player.sendMessage(Text.literal(text).formatted(Formatting.AQUA), false);
+    }
+
+    private static long minutesUntil(long epochMs) {
+        long remainingMs = epochMs - System.currentTimeMillis();
+        return Math.max(1L, Math.round(remainingMs / 60_000.0));
+    }
+
     private static void applyRemoteCall(JsonObject c, boolean announceTransitions) {
         String callId = optString(c, "callId");
         if (callId == null) return;
@@ -174,6 +237,10 @@ public final class InboundDispatcher {
 
     private static double optDouble(JsonObject obj, String key) {
         return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsDouble() : Double.NaN;
+    }
+
+    private static long optLong(JsonObject obj, String key) {
+        return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsLong() : 0L;
     }
 
     private static void handlePong() {

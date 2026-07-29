@@ -2,10 +2,12 @@ package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.config.ReviveReplyConfig;
+import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager.ParsingState;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
+import de.dorikku.gmmedicmod.network.OutboundMessages;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
@@ -47,6 +49,10 @@ public class ChatMessageHandler {
     private static final Pattern HIGHLIGHT_KEYWORD   = Pattern.compile("(?i)\\b(?:heal|heilung|leben|low)\\b");
     // "... legt <player> einen Verband an" — a medic treated the player, so the highlight can go.
     private static final Pattern BANDAGE_TARGET      = Pattern.compile("legt\\s+(.+?)\\s+einen Verband an");
+    // Direct system confirmation to the medic who drew the blood: "Du hast das Blut von
+    // <player> erfolgreich gespendet." Nobody else sees it, so reporting it to the API
+    // server is the only way the other medics learn about the player's 60 min cooldown.
+    private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
     // "Ⓓ (Polizei) NAME » message" — the police department channel, distinct from the medics'
     // own [FUNK]. The real server marks D-Funk lines with the circled "Ⓓ" letter; "[D-FUNK]"
     // is accepted too as a legacy/simulation format. Never sent to the server: see acceptVerbalCall.
@@ -78,6 +84,7 @@ public class ChatMessageHandler {
 
         checkKeywordHighlight(msg, isFunk);
         checkBandageApplied(msg);
+        checkBloodDonated(msg);
 
         if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
             manager.setInDuty(true);
@@ -298,6 +305,28 @@ public class ChatMessageHandler {
         if (call == null) return;
         call.setResolved("Geheilt");
         GMMedic.LOGGER.info("[GM-Medic] Local verbal call for {} resolved (bandaged) — not synced", target);
+    }
+
+    /**
+     * Reports the blood donation the game server has just confirmed to this medic
+     * ("Du hast das Blut von &lt;player&gt; erfolgreich gespendet."). Only the acting medic
+     * sees that line, so this client is the API server's only source for the player's
+     * cooldown — from there it reaches every other medic as a {@code BLOOD_SYNC}.
+     *
+     * <p>Runs before the duty gate on purpose: the single report of this event must not be
+     * lost because duty detection missed a state change. The cooldown is also applied
+     * locally right away so the feature still works with the API connection down; the
+     * server's own reply supersedes that estimate.</p>
+     */
+    private static void checkBloodDonated(String msg) {
+        Matcher m = BLOOD_DONATED_TARGET.matcher(msg);
+        if (!m.find()) return;
+        String player = EmergencyCallManager.normalizeCallerName(m.group(1));
+        if (player == null) return;
+
+        BloodDonationManager.getInstance().applyLocalDraw(player);
+        ApiConnection.getInstance().send(OutboundMessages.bloodDrawn(getPlayerName(), player));
+        GMMedic.LOGGER.info("[GM-Medic] Blood donated for {} — reported to API", player);
     }
 
     /**
