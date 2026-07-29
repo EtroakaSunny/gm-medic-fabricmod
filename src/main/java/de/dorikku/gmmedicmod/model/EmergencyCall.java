@@ -29,7 +29,6 @@ public class EmergencyCall {
     private boolean apiNotifiedResolved = false;
     private String suggestedMedic;
     private boolean remote = false;
-    private boolean localOnly = false;
 
     public EmergencyCall(String callerName, String reason, double x, double y, double z, String locationName, CallType type) {
         this.callerName = callerName;
@@ -154,14 +153,4 @@ public class EmergencyCall {
 
     public boolean isRemote() { return remote; }
     public void setRemote(boolean remote) { this.remote = remote; }
-
-    /**
-     * True for calls created entirely on this client (e.g. an accepted verbal D-Funk
-     * report) that must never be sent to the API server — created via
-     * {@link de.dorikku.gmmedicmod.manager.EmergencyCallManager#addCall} and resolved by
-     * setting {@link #setResolved} directly, bypassing every path that fires
-     * {@code CallEventListener} events.
-     */
-    public boolean isLocalOnly() { return localOnly; }
-    public void setLocalOnly(boolean localOnly) { this.localOnly = localOnly; }
 }
