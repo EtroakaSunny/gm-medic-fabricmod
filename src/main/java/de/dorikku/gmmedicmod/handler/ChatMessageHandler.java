@@ -9,15 +9,8 @@ import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import de.dorikku.gmmedicmod.network.OutboundMessages;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,14 +46,6 @@ public class ChatMessageHandler {
     // <player> erfolgreich gespendet." Nobody else sees it, so reporting it to the API
     // server is the only way the other medics learn about the player's 60 min cooldown.
     private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
-    // "Ⓓ (Polizei) NAME » message" — the police department channel, distinct from the medics'
-    // own [FUNK]. The real server marks D-Funk lines with the circled "Ⓓ" letter; "[D-FUNK]"
-    // is accepted too as a legacy/simulation format. Never sent to the server: see acceptVerbalCall.
-    private static final Pattern POLICE_DFUNK        = Pattern.compile("(?:Ⓓ|\\[D-FUNK])\\s*\\(Polizei\\)\\s+(.+?)\\s*»\\s*(.+)$");
-
-    /** Officer (normalized, lowercase) -> last time the "entgegennehmen" hint was posted, to avoid re-spamming it. */
-    private static final Map<String, Long> lastVerbalOfferMs = new ConcurrentHashMap<>();
-    private static final long VERBAL_OFFER_COOLDOWN_MS = 60_000L;
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
@@ -117,8 +102,6 @@ public class ChatMessageHandler {
         }
 
         if (!manager.isInDuty()) return;
-
-        checkPoliceVerbalCall(msg);
 
         if (msg.contains("ZENTRALE") && msg.contains("hat seinen Notruf zurückgezogen")) {
             extractAndResolve(WITHDRAW_CALLER, msg, "withdrawn", "Zurückgezogen");
@@ -292,20 +275,7 @@ public class ChatMessageHandler {
         String target = EmergencyCallManager.normalizeCallerName(m.group(1));
         if (target == null) return;
         manager.removeKeywordHighlight(target);
-        resolveVerbalCallIfPresent(target);
         GMMedic.LOGGER.info("[GM-Medic] Bandage applied to {} — keyword highlight removed", target);
-    }
-
-    /**
-     * A local-only verbal call (see {@link #acceptVerbalCall}) stops the moment its cop is
-     * bandaged — resolved directly on the instance, never through {@link EmergencyCallManager#resolveCall},
-     * so no CALL_RESOLVED is ever sent. The HUD sweeps resolved calls a few seconds later on its own.
-     */
-    private static void resolveVerbalCallIfPresent(String target) {
-        EmergencyCall call = manager.findActiveLocalOnlyCall(target);
-        if (call == null) return;
-        call.setResolved("Geheilt");
-        GMMedic.LOGGER.info("[GM-Medic] Local verbal call for {} resolved (bandaged) — not synced", target);
     }
 
     /**
@@ -328,66 +298,6 @@ public class ChatMessageHandler {
         BloodDonationManager.getInstance().applyLocalDraw(player);
         ApiConnection.getInstance().send(OutboundMessages.bloodDrawn(getPlayerName(), player));
         GMMedic.LOGGER.info("[GM-Medic] Blood donated for {} — reported to API", player);
-    }
-
-    /**
-     * Detects a police officer sounding like they need medical help on their own [D-FUNK]
-     * channel and offers a clickable chat hint to accept it as a verbal (mündlich) call —
-     * entirely client-side, see {@link #acceptVerbalCall}.
-     */
-    private static void checkPoliceVerbalCall(String msg) {
-        Matcher m = POLICE_DFUNK.matcher(msg);
-        if (!m.find()) return;
-        String officer = EmergencyCallManager.normalizeCallerName(m.group(1));
-        String body = m.group(2);
-        if (officer == null || !HIGHLIGHT_KEYWORD.matcher(body).find()) return;
-        if (manager.findActiveLocalOnlyCall(officer) != null) return;
-
-        String key = officer.toLowerCase(Locale.ROOT);
-        long now = System.currentTimeMillis();
-        Long last = lastVerbalOfferMs.get(key);
-        if (last != null && now - last < VERBAL_OFFER_COOLDOWN_MS) return;
-        lastVerbalOfferMs.put(key, now);
-
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
-
-        MutableText hint = Text.literal("[Mündlicher Notruf entgegennehmen]")
-                .formatted(Formatting.GREEN, Formatting.BOLD)
-                .styled(style -> style
-                        .withClickEvent(new ClickEvent.RunCommand("/gmverbal " + officer))
-                        .withHoverEvent(new HoverEvent.ShowText(Text.literal(
-                                "Sendet \"/d Unterwegs!\" und legt einen lokalen Notruf an (kein Server-Sync)"))));
-
-        Text line = Text.literal("[GM-Medic] ").formatted(Formatting.GRAY)
-                .append(Text.literal(officer + " klingt im D-Funk nach Heilbedarf. ").formatted(Formatting.WHITE))
-                .append(hint);
-        client.player.sendMessage(line, false);
-        GMMedic.LOGGER.info("[GM-Medic] Offered verbal call accept for {}", officer);
-    }
-
-    /**
-     * Runs when the "[Mündlicher Notruf entgegennehmen]" hint is clicked (via the {@code /gmverbal}
-     * client command). Sends the "/d Unterwegs!" department reply and adds a local-only
-     * {@link EmergencyCall} — added via {@link EmergencyCallManager#addCall}, assigned directly on
-     * the instance, never through {@code finalizeCall}/{@code assignMedic}, so nothing here ever
-     * fires a {@code CallEventListener} event or reaches the API server.
-     */
-    public static void acceptVerbalCall(String officerRaw) {
-        String officer = EmergencyCallManager.normalizeCallerName(officerRaw);
-        if (officer == null || manager.findActiveLocalOnlyCall(officer) != null) return;
-
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.player.networkHandler == null) return;
-
-        client.player.networkHandler.sendChatCommand("d Unterwegs!");
-
-        EmergencyCall call = new EmergencyCall(officer, "Mündlicher Notruf (Polizei)", 0, 0, 0, null, EmergencyCall.CallType.ECALL);
-        call.clearLocation();
-        call.setLocalOnly(true);
-        call.setAssignedMedic(getPlayerName());
-        manager.addCall(call);
-        GMMedic.LOGGER.info("[GM-Medic] Accepted verbal Notruf from {} (local only, not synced)", officer);
     }
 
     private static boolean isFunkMessage(String msg) {
