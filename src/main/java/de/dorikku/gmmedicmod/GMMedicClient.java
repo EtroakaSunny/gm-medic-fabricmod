@@ -2,14 +2,17 @@ package de.dorikku.gmmedicmod;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
 import de.dorikku.gmmedicmod.command.DebugCommands;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
+import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.network.ApiConfig;
 import de.dorikku.gmmedicmod.network.ApiConnection;
+import de.dorikku.gmmedicmod.render.BloodTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.render.CallTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
 import net.fabricmc.api.ClientModInitializer;
@@ -55,6 +58,7 @@ public class GMMedicClient implements ClientModInitializer {
         VehicleConfig.getInstance(); // pre-load vehicle automation config
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
 
         // Keybind opens the settings menu directly; only fires outside of another open screen,
         // matching how most single-purpose mod-settings hotkeys behave.
@@ -74,6 +78,7 @@ public class GMMedicClient implements ClientModInitializer {
         );
 
         WorldRenderEvents.AFTER_ENTITIES.register(CallTargetHighlightRenderer::render);
+        WorldRenderEvents.AFTER_ENTITIES.register(BloodTargetHighlightRenderer::render);
 
         // Connect to the API as soon as a GermanMiner server is joined (not just on duty),
         // so the client is online for the whole session.
@@ -88,6 +93,7 @@ public class GMMedicClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
+            BloodDonationManager.getInstance().clear();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
         });
