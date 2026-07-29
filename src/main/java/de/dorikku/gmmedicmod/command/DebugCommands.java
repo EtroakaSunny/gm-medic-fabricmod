@@ -208,17 +208,6 @@ public class DebugCommands {
                         )
                 )
 
-                // /gm testverbal [name]
-                .then(ClientCommandManager.literal("testverbal")
-                        .executes(ctx -> simulateVerbalCall(ctx.getSource(), "Streifenpolizist"))
-                        .then(ClientCommandManager.argument("name", StringArgumentType.word())
-                                .executes(ctx -> simulateVerbalCall(
-                                        ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "name")
-                                ))
-                        )
-                )
-
                 // /gm testduty
                 .then(ClientCommandManager.literal("testduty")
                         .executes(ctx -> {
@@ -259,9 +248,6 @@ public class DebugCommands {
 
                             simulateChatMessage("[FUNK] (Sanit\u00e4ter) DrHouse \u00bb Ich habe Toxic_padz wiederbelebt!");
                             src.sendFeedback(Text.literal("\u00a7a\u2192 Wiederbelebung gesendet"));
-
-                            simulateChatMessage("\u2503 19:02:05 \u00bb \u00bb \u2139 Du hast Toxic_padz erfolgreich wiederbelebt.");
-                            src.sendFeedback(Text.literal("\u00a7a\u2192 Eigene Wiederbelebungs-Best\u00e4tigung gesendet (l\u00f6st Auto-Antwort aus, falls aktiviert)"));
 
                             simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin nicht mehr im Dienst. Bis dann!");
                             src.sendFeedback(Text.literal("\u00a7c\u2192 FUNK leave gesendet"));
@@ -382,7 +368,6 @@ public class DebugCommands {
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testrealformat \u00a77- Echtes GermanMiner-Format (\u24C1 [Rank] Format)"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testdeath [name] \u00a77- DATEN\u00dcBERMITTLUNG (Tod) simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testcall [name] \u00a77- DATEN\u00dcBERMITTLUNG (Notruf) simulieren"));
-                            ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testverbal [name] \u00a77- [D-FUNK] (Polizei)-Notruf simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testduty \u00a77- Dienst betreten simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testoffduty \u00a77- Dienst verlassen simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testfunk \u00a77- FUNK-Nachrichten simulieren"));
@@ -457,24 +442,6 @@ public class DebugCommands {
         simulateChatMessage("  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
 
         src.sendFeedback(Text.literal("\u00a7a\u2714 Simulation abgeschlossen."));
-        return 1;
-    }
-
-    /**
-     * Simulates a police officer sounding hurt on their own [D-FUNK] channel \u2014 should post
-     * the "[M\u00fcndlicher Notruf entgegennehmen]" click hint, entirely client-side.
-     */
-    private static int simulateVerbalCall(FabricClientCommandSource src, String name) {
-        EmergencyCallManager mgr = EmergencyCallManager.getInstance();
-        if (!mgr.isInDuty()) {
-            mgr.setInDuty(true);
-            src.sendFeedback(Text.literal("\u00a7eDienst automatisch aktiviert."));
-        }
-
-        src.sendFeedback(Text.literal("\u00a77Simuliere [D-FUNK] (Polizei)-Notruf f\u00fcr: \u00a7f" + name));
-        simulateChatMessage("[D-FUNK] (Polizei) " + name + " \u00bb brauche mal heal hier");
-        src.sendFeedback(Text.literal("\u00a7a\u2192 D-FUNK-Nachricht gesendet."));
-
         return 1;
     }
 

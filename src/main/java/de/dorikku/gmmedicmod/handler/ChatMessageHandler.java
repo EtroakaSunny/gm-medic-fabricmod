@@ -10,15 +10,8 @@ import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import de.dorikku.gmmedicmod.network.OutboundMessages;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,10 +27,6 @@ public class ChatMessageHandler {
     private static final Pattern REJECT_CALLER       = Pattern.compile("Ich habe den Notruf von (.+?)\\s+zurückgewiesen");
     private static final Pattern WITHDRAW_CALLER     = Pattern.compile("Spieler (.+?) hat");
     private static final Pattern REVIVE_CALLER       = Pattern.compile("Ich habe\\s+(.+?)\\s+wiederbelebt(?:[.!?]|$)");
-    // Direct system confirmation to the reviver, e.g. "... ℹ Du hast thespecial erfolgreich wiederbelebt."
-    // Unlike the [FUNK] broadcast above, this only ever appears for your own revive — no
-    // reviver-name/isFunk matching needed to know the auto-reply target.
-    private static final Pattern SELF_REVIVE_TARGET  = Pattern.compile("Du hast\\s+(.+?)\\s+erfolgreich wiederbelebt");
     private static final Pattern LOGOUT_CALLER       = Pattern.compile("Spieler (.+?) hat sich ausgeloggt");
     private static final Pattern REACHED_CALLER      = Pattern.compile("Ich habe den Notruf von (.+?)\\s+erreicht");
     private static final Pattern CANCEL_DEATH_CALLER = Pattern.compile("Ich kann die Todesmeldung von (.+?)\\s+nicht mehr erledigen");
@@ -57,15 +46,6 @@ public class ChatMessageHandler {
     // Bank alarm, only trusted from the D-Funk: "Der Alarm der <Bank> wurde ausgelöst"
     private static final Pattern DFUNK_ALARM_START   = Pattern.compile("Der Alarm der (.+?) wurde ausgelöst");
     private static final String  DFUNK_ALARM_END     = "Der Bankraub wurde beendet";
-    // "Ⓓ (Polizei) NAME » message" — the police department channel, distinct from the medics'
-    // own [FUNK]. The real server marks D-Funk lines with the circled "Ⓓ" letter; "[D-FUNK]"
-    // is accepted too as a legacy/simulation format (see isDFunkMessage below).
-    // Never sent to the server: see acceptVerbalCall.
-    private static final Pattern POLICE_DFUNK        = Pattern.compile("(?:Ⓓ|\\[D-FUNK])\\s*\\(Polizei\\)\\s+(.+?)\\s*»\\s*(.+)$");
-
-    /** Officer (normalized, lowercase) -> last time the "entgegennehmen" hint was posted, to avoid re-spamming it. */
-    private static final Map<String, Long> lastVerbalOfferMs = new ConcurrentHashMap<>();
-    private static final long VERBAL_OFFER_COOLDOWN_MS = 60_000L;
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
@@ -140,8 +120,6 @@ public class ChatMessageHandler {
 
         if (!manager.isInDuty()) return;
 
-        checkPoliceVerbalCall(msg);
-
         if (msg.contains("ZENTRALE") && msg.contains("hat seinen Notruf zurückgezogen")) {
             extractAndResolve(WITHDRAW_CALLER, msg, "withdrawn", "Zurückgezogen");
             return;
@@ -149,11 +127,7 @@ public class ChatMessageHandler {
 
         if (isFunk && msg.contains("Ich habe") && msg.contains("wiederbelebt")) {
             extractAndResolve(REVIVE_CALLER, msg, "revived", "Wiederbelebt");
-            return;
-        }
-
-        if (msg.contains("Du hast") && msg.contains("erfolgreich wiederbelebt")) {
-            sendReviveReplyIfConfigured(msg);
+            maybeSendReviveReply(msg);
             return;
         }
 
@@ -314,20 +288,7 @@ public class ChatMessageHandler {
         String target = EmergencyCallManager.normalizeCallerName(m.group(1));
         if (target == null) return;
         manager.removeKeywordHighlight(target);
-        resolveVerbalCallIfPresent(target);
         GMMedic.LOGGER.info("[GM-Medic] Bandage applied to {} — keyword highlight removed", target);
-    }
-
-    /**
-     * A local-only verbal call (see {@link #acceptVerbalCall}) stops the moment its cop is
-     * bandaged — resolved directly on the instance, never through {@link EmergencyCallManager#resolveCall},
-     * so no CALL_RESOLVED is ever sent. The HUD sweeps resolved calls a few seconds later on its own.
-     */
-    private static void resolveVerbalCallIfPresent(String target) {
-        EmergencyCall call = manager.findActiveLocalOnlyCall(target);
-        if (call == null) return;
-        call.setResolved("Geheilt");
-        GMMedic.LOGGER.info("[GM-Medic] Local verbal call for {} resolved (bandaged) — not synced", target);
     }
 
     /**
@@ -352,65 +313,6 @@ public class ChatMessageHandler {
         GMMedic.LOGGER.info("[GM-Medic] Blood donated for {} — reported to API", player);
     }
 
-    /**
-     * Detects a police officer sounding like they need medical help on their own [D-FUNK]
-     * channel and offers a clickable chat hint to accept it as a verbal (mündlich) call —
-     * entirely client-side, see {@link #acceptVerbalCall}.
-     */
-    private static void checkPoliceVerbalCall(String msg) {
-        Matcher m = POLICE_DFUNK.matcher(msg);
-        if (!m.find()) return;
-        String officer = EmergencyCallManager.normalizeCallerName(m.group(1));
-        String body = m.group(2);
-        if (officer == null || !HIGHLIGHT_KEYWORD.matcher(body).find()) return;
-        if (manager.findActiveLocalOnlyCall(officer) != null) return;
-
-        String key = officer.toLowerCase(Locale.ROOT);
-        long now = System.currentTimeMillis();
-        Long last = lastVerbalOfferMs.get(key);
-        if (last != null && now - last < VERBAL_OFFER_COOLDOWN_MS) return;
-        lastVerbalOfferMs.put(key, now);
-
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
-
-        MutableText hint = Text.literal("[Mündlicher Notruf entgegennehmen]")
-                .formatted(Formatting.GREEN, Formatting.BOLD)
-                .styled(style -> style
-                        .withClickEvent(new ClickEvent.RunCommand("/gmverbal " + officer))
-                        .withHoverEvent(new HoverEvent.ShowText(Text.literal(
-                                "Sendet \"/d Unterwegs!\" und legt einen lokalen Notruf an (kein Server-Sync)"))));
-
-        Text line = Text.literal("[GM-Medic] ").formatted(Formatting.GRAY)
-                .append(Text.literal(officer + " klingt im D-Funk nach Heilbedarf. ").formatted(Formatting.WHITE))
-                .append(hint);
-        client.player.sendMessage(line, false);
-        GMMedic.LOGGER.info("[GM-Medic] Offered verbal call accept for {}", officer);
-    }
-
-    /**
-     * Runs when the "[Mündlicher Notruf entgegennehmen]" hint is clicked (via the {@code /gmverbal}
-     * client command). Sends the "/d Unterwegs!" department reply and adds a local-only
-     * {@link EmergencyCall} — added via {@link EmergencyCallManager#addCall}, assigned directly on
-     * the instance, never through {@code finalizeCall}/{@code assignMedic}, so nothing here ever
-     * fires a {@code CallEventListener} event or reaches the API server.
-     */
-    public static void acceptVerbalCall(String officerRaw) {
-        String officer = EmergencyCallManager.normalizeCallerName(officerRaw);
-        if (officer == null || manager.findActiveLocalOnlyCall(officer) != null) return;
-
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.player.networkHandler == null) return;
-
-        client.player.networkHandler.sendChatCommand("d Unterwegs!");
-
-        EmergencyCall call = new EmergencyCall(officer, "Mündlicher Notruf (Polizei)", 0, 0, 0, null, EmergencyCall.CallType.ECALL);
-        call.clearLocation();
-        call.setLocalOnly(true);
-        call.setAssignedMedic(getPlayerName());
-        manager.addCall(call);
-        GMMedic.LOGGER.info("[GM-Medic] Accepted verbal Notruf from {} (local only, not synced)", officer);
-    }
 
     private static boolean isFunkMessage(String msg) {
         return msg.contains("[FUNK]");
@@ -459,14 +361,18 @@ public class ChatMessageHandler {
     }
 
     /**
-     * Sends an automatic public chat reply right after the server's own confirmation to you
-     * ("... Du hast X erfolgreich wiederbelebt."). Unlike the old [FUNK]-broadcast heuristic,
-     * this message only ever appears for your own revive, so no reviver-name matching is needed.
+     * Sends an automatic public chat reply right after your own "Ich habe X wiederbelebt!"
+     * broadcast — but only when the local player is the one the FUNK sender name resolves to,
+     * so a call resolved by watching someone else's revive never triggers it.
      */
-    private static void sendReviveReplyIfConfigured(String msg) {
+    private static void maybeSendReviveReply(String msg) {
         if (!ReviveReplyConfig.getInstance().isEnabled()) return;
 
-        Matcher m = SELF_REVIVE_TARGET.matcher(msg);
+        String reviver = extractFunkSender(msg);
+        String playerName = getPlayerName();
+        if (reviver == null || playerName == null || !reviver.equalsIgnoreCase(playerName)) return;
+
+        Matcher m = REVIVE_CALLER.matcher(msg);
         if (!m.find()) return;
         String target = EmergencyCallManager.normalizeCallerName(m.group(1));
         if (target == null) return;
