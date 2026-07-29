@@ -4,6 +4,7 @@ import de.dorikku.gmmedicmod.network.ApiConfig;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.text.Text;
@@ -45,6 +46,13 @@ public class ApiSettingsScreen extends AbstractGMMedicScreen {
 
         this.addDrawableChild(new TextWidget(x, y, BUTTON_WIDTH, BUTTON_HEIGHT,
                 Text.literal("Ändern nur über /gmapi url <adresse>").formatted(Formatting.GRAY), this.textRenderer));
+        y += ROW_SPACING + 6;
+
+        this.addDrawableChild(
+                CyclingButtonWidget.onOffBuilder(cfg.isUpdateNoticeEnabled())
+                        .build(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Text.literal("Update-Hinweis"),
+                                (btn, value) -> ApiConfig.getInstance().setUpdateNoticeEnabled(value))
+        );
         y += ROW_SPACING + 6;
 
         TextFieldWidget tokenBox = new TextFieldWidget(this.textRenderer, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Text.literal("Token"));
