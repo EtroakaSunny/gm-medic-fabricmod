@@ -15,6 +15,7 @@ import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.network.ApiConfig;
 import de.dorikku.gmmedicmod.network.ApiConnection;
+import de.dorikku.gmmedicmod.network.UpdateNotifier;
 import de.dorikku.gmmedicmod.render.BloodTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.render.CallTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
@@ -63,6 +64,7 @@ public class GMMedicClient implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
         ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
+        ClientTickEvents.END_CLIENT_TICK.register(UpdateNotifier::tick);
 
         // Keybind opens the settings menu directly; only fires outside of another open screen,
         // matching how most single-purpose mod-settings hotkeys behave.
@@ -96,6 +98,8 @@ public class GMMedicClient implements ClientModInitializer {
             String address = server != null ? server.address : null;
             if (address != null && address.toLowerCase(Locale.ROOT).contains("germanminer.de")) {
                 GMMedic.LOGGER.info("[GM-Medic] GermanMiner server joined ({}) — connecting to API", address);
+                // Starts the delay window for the update notice, so it isn't buried in join spam.
+                UpdateNotifier.onJoin();
                 ApiConnection.getInstance().connect();
             }
         });
@@ -104,6 +108,7 @@ public class GMMedicClient implements ClientModInitializer {
             EmergencyCallManager.getInstance().setInDuty(false);
             AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
+            UpdateNotifier.onDisconnect();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
         });

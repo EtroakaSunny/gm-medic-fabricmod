@@ -82,7 +82,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
             MinecraftClient client = MinecraftClient.getInstance();
             String username = client.getSession().getUsername();
             String token = ApiConfig.getInstance().getAuthToken();
-            sendRaw(OutboundMessages.auth(token, username));
+            sendRaw(OutboundMessages.auth(token, username, GMMedic.modVersion()));
             GMMedic.LOGGER.info("[ApiConnection] Connected to {}", url);
         } catch (Exception e) {
             GMMedic.LOGGER.warn("[ApiConnection] Connection failed: {}", e.getMessage());
