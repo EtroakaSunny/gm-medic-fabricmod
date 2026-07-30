@@ -41,15 +41,14 @@ public final class CallArrivalCountdown {
         if (BloodDrawAssistant.isSyringeSelected(client)) return;
 
         long remainingMs = endMs - System.currentTimeMillis();
-        if (remainingMs <= 0) {
-            endMs = 0L;
+        int secondsLeft = remainingMs <= 0 ? 0 : (int) Math.ceil(remainingMs / 1000.0);
+        if (secondsLeft == lastShownSecond) {
+            if (secondsLeft == 0) endMs = 0L;
             return;
         }
-
-        int secondsLeft = (int) Math.ceil(remainingMs / 1000.0);
-        if (secondsLeft == lastShownSecond) return;
         lastShownSecond = secondsLeft;
 
         client.player.sendMessage(Text.literal("⏱ " + secondsLeft).formatted(Formatting.YELLOW), true);
+        if (secondsLeft == 0) endMs = 0L;
     }
 }
