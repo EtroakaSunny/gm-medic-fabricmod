@@ -116,6 +116,23 @@ public final class OutboundMessages {
         return obj.toString();
     }
 
+    public static String alarmTriggered(String username, String alarmName) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("type", "ALARM_TRIGGERED");
+        obj.addProperty("username", username);
+        obj.addProperty("alarmName", alarmName);
+        obj.addProperty("timestamp", System.currentTimeMillis());
+        return obj.toString();
+    }
+
+    public static String alarmEnded(String username) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("type", "ALARM_ENDED");
+        obj.addProperty("username", username);
+        obj.addProperty("timestamp", System.currentTimeMillis());
+        return obj.toString();
+    }
+
     public static String ping() {
         JsonObject obj = new JsonObject();
         obj.addProperty("type", "PING");

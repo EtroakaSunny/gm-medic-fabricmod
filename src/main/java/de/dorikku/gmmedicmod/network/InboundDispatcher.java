@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
+import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
@@ -40,6 +41,7 @@ public final class InboundDispatcher {
                 case "OPEN_CALLS"     -> handleOpenCalls(obj);
                 case "CALL_SYNC"      -> handleCallSync(obj);
                 case "CALL_REMOVED"   -> handleCallRemoved(obj);
+                case "ALARM_SYNC"     -> handleAlarmSync(obj);
                 case "BLOOD_STATUS"   -> handleBloodStatus(obj);
                 case "BLOOD_SYNC"     -> handleBloodSync(obj);
                 case "BLOOD_LIST"     -> handleBloodList(obj);
@@ -135,6 +137,18 @@ public final class InboundDispatcher {
     private static void handleCallRemoved(JsonObject obj) {
         String callId = optString(obj, "callId");
         if (callId != null) EmergencyCallManager.getInstance().removeByCallId(callId);
+    }
+
+    private static void handleAlarmSync(JsonObject obj) {
+        boolean active = obj.has("active") && !obj.get("active").isJsonNull() && obj.get("active").getAsBoolean();
+        if (active) {
+            String name = optString(obj, "alarmName");
+            long triggeredAt = obj.has("triggeredAtMs") && !obj.get("triggeredAtMs").isJsonNull()
+                    ? obj.get("triggeredAtMs").getAsLong() : 0L;
+            AlarmManager.getInstance().triggerFromRemote(name != null ? name : "Unbekannt", triggeredAt);
+        } else {
+            AlarmManager.getInstance().endFromRemote();
+        }
     }
 
     /**
