@@ -48,6 +48,13 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         );
         y += ROW_SPACING;
 
+        this.addDrawableChild(
+                CyclingButtonWidget.onOffBuilder(cfg.isCallTimerEnabled())
+                        .build(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Text.literal("Notruf-Timer"),
+                                (btn, value) -> HudConfig.getInstance().setCallTimerEnabled(value))
+        );
+        y += ROW_SPACING;
+
         addStepper(x, y, "Highlight-Reichweite",
                 () -> (int) HudConfig.getInstance().getHighlightRange(),
                 value -> HudConfig.getInstance().setHighlightRange(value),
