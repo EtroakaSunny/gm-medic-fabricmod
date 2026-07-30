@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
+import de.dorikku.gmmedicmod.config.HudConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -30,6 +31,11 @@ public final class CallArrivalCountdown {
 
     public static void tick(Minecraft client) {
         if (endMs == 0L || client.player == null) return;
+        // Switched off mid-countdown: drop it rather than resuming when it's switched back on.
+        if (!HudConfig.getInstance().isCallTimerEnabled()) {
+            endMs = 0L;
+            return;
+        }
         // A selected syringe means BloodDrawAssistant owns the actionbar right now — its
         // donation status is more important than this countdown, so stay out of its way.
         if (BloodDrawAssistant.isSyringeSelected(client)) return;
