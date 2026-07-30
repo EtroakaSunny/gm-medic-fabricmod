@@ -14,6 +14,18 @@ public class HudConfig {
     private boolean compactMode = false;
     private boolean highlightEnabled = true;
     private double highlightRange = 100.0;
+    /**
+     * Whether the blood-donation status is shown at all (syringe actionbar message, the
+     * green/red box and its floating label, and the note when another medic draws blood).
+     * Donations are still tracked and reported when this is off — only the display stops.
+     * {@link #bloodDrawMessageEnabled} silences just the note while the rest stays visible.
+     */
+    private boolean bloodDisplayEnabled = true;
+    /**
+     * Whether the chat note about a donation another medic performed is shown. The cooldown
+     * itself is applied either way — turning this off only silences the message.
+     */
+    private boolean bloodDrawMessageEnabled = true;
     private boolean loaded = false;
 
     private HudConfig() {}
@@ -45,6 +57,10 @@ public class HudConfig {
                         compactMode = Boolean.parseBoolean(line.substring("compactMode=".length()).trim());
                     } else if (line.startsWith("highlightEnabled=")) {
                         highlightEnabled = Boolean.parseBoolean(line.substring("highlightEnabled=".length()).trim());
+                    } else if (line.startsWith("bloodDisplayEnabled=")) {
+                        bloodDisplayEnabled = Boolean.parseBoolean(line.substring("bloodDisplayEnabled=".length()).trim());
+                    } else if (line.startsWith("bloodDrawMessageEnabled=")) {
+                        bloodDrawMessageEnabled = Boolean.parseBoolean(line.substring("bloodDrawMessageEnabled=".length()).trim());
                     } else if (line.startsWith("highlightRange=")) {
                         try {
                             highlightRange = clampRange(Double.parseDouble(line.substring("highlightRange=".length()).trim()));
@@ -71,7 +87,13 @@ public class HudConfig {
                     "# Highlight players that have an open emergency call with an outline box\n" +
                     "highlightEnabled=" + highlightEnabled + "\n" +
                     "# Maximum distance (in blocks) at which players are highlighted\n" +
-                    "highlightRange=" + highlightRange + "\n";
+                    "highlightRange=" + highlightRange + "\n" +
+                    "# Show blood-donation status (syringe message, box, label, other medics' draws).\n" +
+                    "# Donations are still tracked and reported when this is off\n" +
+                    "bloodDisplayEnabled=" + bloodDisplayEnabled + "\n" +
+                    "# Show a chat note when another medic donated a player's blood.\n" +
+                    "# The cooldown is still applied when this is off\n" +
+                    "bloodDrawMessageEnabled=" + bloodDrawMessageEnabled + "\n";
             Files.writeString(configPath, content);
             GMMedic.LOGGER.info("[HudConfig] Saved config: compactMode={}, highlightEnabled={}, highlightRange={}",
                     compactMode, highlightEnabled, highlightRange);
@@ -104,6 +126,24 @@ public class HudConfig {
 
     public void toggleHighlight() {
         setHighlightEnabled(!highlightEnabled);
+    }
+
+    public boolean isBloodDisplayEnabled() {
+        return bloodDisplayEnabled;
+    }
+
+    public void setBloodDisplayEnabled(boolean enabled) {
+        bloodDisplayEnabled = enabled;
+        save();
+    }
+
+    public boolean isBloodDrawMessageEnabled() {
+        return bloodDrawMessageEnabled;
+    }
+
+    public void setBloodDrawMessageEnabled(boolean enabled) {
+        bloodDrawMessageEnabled = enabled;
+        save();
     }
 
     public double getHighlightRange() {
