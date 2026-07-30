@@ -27,6 +27,10 @@ public class ChatMessageHandler {
     private static final Pattern REJECT_CALLER       = Pattern.compile("Ich habe den Notruf von (.+?)\\s+zurückgewiesen");
     private static final Pattern WITHDRAW_CALLER     = Pattern.compile("Spieler (.+?) hat");
     private static final Pattern REVIVE_CALLER       = Pattern.compile("Ich habe\\s+(.+?)\\s+wiederbelebt(?:[.!?]|$)");
+    // Direct system confirmation to the reviver, e.g. "... ℹ Du hast thespecial erfolgreich wiederbelebt."
+    // Unlike the [FUNK] broadcast above, this only ever appears for your own revive — no
+    // reviver-name/isFunk matching needed to know the auto-reply target.
+    private static final Pattern SELF_REVIVE_TARGET  = Pattern.compile("Du hast\\s+(.+?)\\s+erfolgreich wiederbelebt");
     private static final Pattern LOGOUT_CALLER       = Pattern.compile("Spieler (.+?) hat sich ausgeloggt");
     private static final Pattern REACHED_CALLER      = Pattern.compile("Ich habe den Notruf von (.+?)\\s+erreicht");
     private static final Pattern CANCEL_DEATH_CALLER = Pattern.compile("Ich kann die Todesmeldung von (.+?)\\s+nicht mehr erledigen");
@@ -150,7 +154,11 @@ public class ChatMessageHandler {
 
         if (isFunk && msg.contains("Ich habe") && msg.contains("wiederbelebt")) {
             extractAndResolve(REVIVE_CALLER, msg, "revived", "Wiederbelebt");
-            maybeSendReviveReply(msg);
+            return;
+        }
+
+        if (msg.contains("Du hast") && msg.contains("erfolgreich wiederbelebt")) {
+            sendReviveReplyIfConfigured(msg);
             return;
         }
 
@@ -404,18 +412,14 @@ public class ChatMessageHandler {
     }
 
     /**
-     * Sends an automatic public chat reply right after your own "Ich habe X wiederbelebt!"
-     * broadcast — but only when the local player is the one the FUNK sender name resolves to,
-     * so a call resolved by watching someone else's revive never triggers it.
+     * Sends an automatic public chat reply right after the server's own confirmation to you
+     * ("... Du hast X erfolgreich wiederbelebt."). Unlike the old [FUNK]-broadcast heuristic,
+     * this message only ever appears for your own revive, so no reviver-name matching is needed.
      */
-    private static void maybeSendReviveReply(String msg) {
+    private static void sendReviveReplyIfConfigured(String msg) {
         if (!ReviveReplyConfig.getInstance().isEnabled()) return;
 
-        String reviver = extractFunkSender(msg);
-        String playerName = getPlayerName();
-        if (reviver == null || playerName == null || !reviver.equalsIgnoreCase(playerName)) return;
-
-        Matcher m = REVIVE_CALLER.matcher(msg);
+        Matcher m = SELF_REVIVE_TARGET.matcher(msg);
         if (!m.find()) return;
         String target = EmergencyCallManager.normalizeCallerName(m.group(1));
         if (target == null) return;
