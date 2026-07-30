@@ -233,8 +233,10 @@ public final class InboundDispatcher {
     }
 
     private static void announceBloodDraw(String playerName, String medicName, long readyAtMs) {
-        // Display off — the cooldown was still cached by the caller, this only skips the note.
-        if (!HudConfig.getInstance().isBloodDisplayEnabled()) return;
+        // Display or note switched off — the cooldown was already cached by the caller, so the
+        // aimed-at status stays correct either way; only this chat line is skipped.
+        HudConfig hud = HudConfig.getInstance();
+        if (!hud.isBloodDisplayEnabled() || !hud.isBloodDrawMessageEnabled()) return;
         // The broadcast reaches every connected client; only on-duty medics care.
         if (!EmergencyCallManager.getInstance().isInDuty()) return;
         MinecraftClient client = MinecraftClient.getInstance();
