@@ -42,11 +42,21 @@ public class ChatMessageHandler {
     // server is the only way the other medics learn about the player's 60 min cooldown.
     private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
 
+    /**
+     * Duty state observed while the feature gate was still closed, applied as soon as the API
+     * server verifies this client. Only touched from the client thread (chat events and the
+     * inbound dispatcher's {@code client.execute} both run there).
+     */
+    private static Boolean pendingDutyState = null;
+
     public static void onGameMessage(Component message, boolean overlay) {
         if (overlay) return;
         // Unverified players get nothing from the mod at all — not even duty detection,
         // so isInDuty() can never flip true and everything gated on it stays off too.
-        if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
+        if (!ApiConnection.getInstance().isFeatureUnlocked()) {
+            rememberDutyStateWhileLocked(message);
+            return;
+        }
         try {
             String raw = message.getString();
             GMMedic.LOGGER.debug("[GM-Medic] Raw message: {}", raw);
@@ -56,9 +66,45 @@ public class ChatMessageHandler {
         }
     }
 
+    /**
+     * The game server announces a rejoining medic's duty state ("Ich bin wieder auf dem Server")
+     * about a second after the join — normally before the API handshake started in
+     * {@code ClientPlayConnectionEvents.JOIN} finishes, so {@link #onGameMessage} would drop that
+     * one line and the medic would stay marked off duty for the rest of the session. Remember the
+     * last duty signal instead and let {@link #applyPendingDutyState()} replay it after AUTH_OK.
+     *
+     * <p>Nothing else is buffered: everything else the mod reacts to is either re-synced by the
+     * API server on duty start (open calls) or would be stale by the time verification lands.</p>
+     */
+    private static void rememberDutyStateWhileLocked(Component message) {
+        try {
+            String msg = sanitize(message.getString());
+            Boolean state = detectDutyState(msg, isFunkMessage(msg));
+            if (state == null) return;
+            pendingDutyState = state;
+            GMMedic.LOGGER.info("[GM-Medic] Duty signal ({}) seen before verification — applying after AUTH_OK",
+                    state ? "on" : "off");
+        } catch (Exception e) {
+            GMMedic.LOGGER.error("[GM-Medic] Error checking message for duty state", e);
+        }
+    }
+
+    /** Applies the duty state seen before AUTH_OK. Called once the API server has verified us. */
+    public static void applyPendingDutyState() {
+        Boolean state = pendingDutyState;
+        pendingDutyState = null;
+        if (state == null || manager.isInDuty() == state) return;
+        manager.setInDuty(state);
+        GMMedic.LOGGER.info("[GM-Medic] {} duty (pre-verification signal)", state ? "On" : "Off");
+    }
+
+    /** Drops a remembered duty signal — on AUTH_FAIL and on leaving the server. */
+    public static void clearPendingDutyState() {
+        pendingDutyState = null;
+    }
+
     private static void processMessage(String msg) {
-        msg = FORMAT_CODE.matcher(msg).replaceAll("");
-        msg = msg.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+        msg = sanitize(msg);
 
         boolean isFunk = isFunkMessage(msg);
 
@@ -66,34 +112,11 @@ public class ChatMessageHandler {
         checkBandageApplied(msg);
         checkBloodDonated(msg);
 
-        if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
-            manager.setInDuty(true);
-            GMMedic.LOGGER.info("[GM-Medic] On duty (direct)");
+        Boolean dutyState = detectDutyState(msg, isFunk);
+        if (dutyState != null) {
+            manager.setInDuty(dutyState);
+            GMMedic.LOGGER.info("[GM-Medic] {} duty", dutyState ? "On" : "Off");
             return;
-        }
-
-        if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) {
-            manager.setInDuty(false);
-            GMMedic.LOGGER.info("[GM-Medic] Off duty (direct)");
-            return;
-        }
-
-        if (isFunk) {
-            String playerName = getPlayerName();
-            String funkSender = extractFunkSender(msg);
-            boolean isOwn = isOwnMessage(playerName, funkSender, msg);
-            if (isOwn) {
-                if (msg.contains("Ich bin wieder auf dem Server")) {
-                    manager.setInDuty(true);
-                    GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK join)");
-                    return;
-                }
-                if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) {
-                    manager.setInDuty(false);
-                    GMMedic.LOGGER.info("[GM-Medic] Off duty (FUNK leave)");
-                    return;
-                }
-            }
         }
 
         if (!manager.isInDuty()) return;
@@ -288,6 +311,27 @@ public class ChatMessageHandler {
         BloodDonationManager.getInstance().applyLocalDraw(player);
         ApiConnection.getInstance().send(OutboundMessages.bloodDrawn(getPlayerName(), player));
         GMMedic.LOGGER.info("[GM-Medic] Blood donated for {} — reported to API", player);
+    }
+
+    private static String sanitize(String msg) {
+        msg = FORMAT_CODE.matcher(msg).replaceAll("");
+        return msg.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+    }
+
+    /**
+     * Recognises the lines that flip the duty state, either as a direct system message or as this
+     * player's own FUNK broadcast. Returns {@code null} when the message says nothing about duty.
+     */
+    private static Boolean detectDutyState(String msg, boolean isFunk) {
+        if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) return true;
+        if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) return false;
+
+        if (!isFunk) return null;
+        if (!isOwnMessage(getPlayerName(), extractFunkSender(msg), msg)) return null;
+
+        if (msg.contains("Ich bin wieder auf dem Server")) return true;
+        if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) return false;
+        return null;
     }
 
     private static boolean isFunkMessage(String msg) {

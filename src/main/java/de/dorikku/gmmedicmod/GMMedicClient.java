@@ -90,6 +90,7 @@ public class GMMedicClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
+            ChatMessageHandler.clearPendingDutyState();
             BloodDonationManager.getInstance().clear();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
