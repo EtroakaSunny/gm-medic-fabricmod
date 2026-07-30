@@ -13,6 +13,7 @@ import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
 import java.net.URI;
+import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
@@ -21,6 +22,10 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 
 public final class InboundDispatcher {
+
+    private static final long NEAREST_DEDUPE_MS = 10_000L;
+    private static String lastNearestKey = null;
+    private static long lastNearestMs = 0L;
 
     private InboundDispatcher() {}
 
@@ -99,19 +104,33 @@ public final class InboundDispatcher {
         String caller = call != null ? call.getCallerName() : null;
         if (call != null) call.setSuggestedMedic(nearestMedic);
 
+        // The broadcast reaches every connected client; only on-duty medics care.
+        if (!EmergencyCallManager.getInstance().isInDuty()) return;
+
+        // Several clients can report the same transmission (each with its own callId),
+        // so the server may broadcast the suggestion more than once — announce each
+        // caller/medic pair only once per window.
+        String dedupeKey = (caller != null ? caller.toLowerCase(Locale.ROOT) : callId) + "|" + nearestMedic;
+        long now = System.currentTimeMillis();
+        if (dedupeKey.equals(lastNearestKey) && now - lastNearestMs < NEAREST_DEDUPE_MS) return;
+        lastNearestKey = dedupeKey;
+        lastNearestMs = now;
+
         String dist = obj.has("distanceBlocks") && !obj.get("distanceBlocks").isJsonNull()
                 ? String.valueOf(Math.round(obj.get("distanceBlocks").getAsDouble()))
                 : null;
 
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            String text = "[GM-Medic] Nächster freier Sanitäter"
-                    + (caller != null ? " für " + caller : "")
-                    + ": " + nearestMedic
-                    + (dist != null ? " (" + dist + "m)" : "");
+            String suffix;
+            if (caller != null && dist != null) suffix = " (für " + caller + ", " + dist + "m)";
+            else if (caller != null)            suffix = " (für " + caller + ")";
+            else if (dist != null)              suffix = " (" + dist + "m)";
+            else                                suffix = "";
+            String text = "GM-Medic: Der nächste Medic ist: " + nearestMedic + suffix;
             client.player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.AQUA));
         }
-        GMMedic.LOGGER.info("[ApiConnection] Nearest free medic for {}: {}", callId, nearestMedic);
+        GMMedic.LOGGER.info("[ApiConnection] Nearest medic for {}: {}", callId, nearestMedic);
     }
 
     private static void handleOpenCalls(JsonObject obj) {
