@@ -3,9 +3,9 @@
 	"id": "gm-medic",
 	"version": "${version}",
 	"name": "GM Medic",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "The GM Medic Mod",
 	"authors": [
-		"Me!"
+		"Dorikku"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
