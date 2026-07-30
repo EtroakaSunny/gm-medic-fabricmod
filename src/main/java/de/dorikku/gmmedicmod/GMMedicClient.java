@@ -8,7 +8,9 @@ import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
 import de.dorikku.gmmedicmod.handler.CallArrivalCountdown;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
+import de.dorikku.gmmedicmod.hud.AlarmHud;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
+import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.network.ApiConfig;
@@ -81,6 +83,11 @@ public class GMMedicClient implements ClientModInitializer {
                 EmergencyCallHud::render
         );
 
+        HudElementRegistry.addLast(
+                Identifier.of(GMMedic.MOD_ID, "alarm_hud"),
+                AlarmHud::render
+        );
+
         WorldRenderEvents.AFTER_ENTITIES.register(CallTargetHighlightRenderer::render);
         WorldRenderEvents.AFTER_ENTITIES.register(BloodTargetHighlightRenderer::render);
 
@@ -100,6 +107,7 @@ public class GMMedicClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
             ChatMessageHandler.clearPendingDutyState();
+            AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
             UpdateNotifier.onDisconnect();
             ApiConnection.getInstance().disconnect();

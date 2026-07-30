@@ -300,6 +300,22 @@ public class DebugCommands {
                         })
                 )
 
+                // /gm testalarm [bank] — simulates the D-Funk bank alarm line
+                .then(ClientCommandManager.literal("testalarm")
+                        .executes(ctx -> simulateAlarm(ctx.getSource(), "Volksbank"))
+                        .then(ClientCommandManager.argument("bank", StringArgumentType.greedyString())
+                                .executes(ctx -> simulateAlarm(ctx.getSource(), StringArgumentType.getString(ctx, "bank"))))
+                )
+
+                // /gm testalarmend — simulates the D-Funk robbery-over line
+                .then(ClientCommandManager.literal("testalarmend")
+                        .executes(ctx -> {
+                            simulateChatMessage("Ⓓ ZENTRALE » Der Bankraub wurde beendet.");
+                            ctx.getSource().sendFeedback(Text.literal("§a→ D-Funk Alarm-Ende gesendet"));
+                            return 1;
+                        })
+                )
+
                 // /gm testrealformat — simulates the REAL GermanMiner server format with Ⓛ instead of [FUNK]
                 .then(ClientCommandManager.literal("testrealformat")
                         .executes(ctx -> {
@@ -354,6 +370,8 @@ public class DebugCommands {
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testcall [name] \u00a77- DATEN\u00dcBERMITTLUNG (Notruf) simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testduty \u00a77- Dienst betreten simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testoffduty \u00a77- Dienst verlassen simulieren"));
+                            ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testalarm [bank] \u00a77- D-Funk Bankalarm simulieren"));
+                            ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testalarmend \u00a77- D-Funk Alarm-Ende simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm testfunk \u00a77- FUNK-Nachrichten simulieren"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a76\u00a7l--- Direkte Verwaltung ---"));
                             ctx.getSource().sendFeedback(Text.literal("\u00a7e/gm accept <anrufer> <medic> \u00a77- Notruf zuweisen"));
@@ -424,6 +442,15 @@ public class DebugCommands {
         simulateChatMessage("  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
 
         src.sendFeedback(Text.literal("\u00a7a\u2714 Simulation abgeschlossen."));
+        return 1;
+    }
+
+    /**
+     * Simulates the D-Funk bank alarm line ("Der Alarm der <Bank> wurde ausgelöst").
+     */
+    private static int simulateAlarm(FabricClientCommandSource src, String bank) {
+        simulateChatMessage("Ⓓ ZENTRALE » Der Alarm der " + bank + " wurde ausgelöst!");
+        src.sendFeedback(Text.literal("§a→ D-Funk Alarm gesendet: §f" + bank));
         return 1;
     }
 
