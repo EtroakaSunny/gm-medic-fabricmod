@@ -272,6 +272,7 @@ public class ChatMessageHandler {
             EmergencyCall call = manager.finalizeCall();
             if (call != null) {
                 GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
+                CallArrivalCountdown.start();
             }
         }
     }

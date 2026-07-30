@@ -4,6 +4,7 @@ import de.dorikku.gmmedicmod.network.ApiConfig;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;
@@ -45,6 +46,13 @@ public class ApiSettingsScreen extends AbstractGMMedicScreen {
 
         this.addRenderableWidget(new StringWidget(x, y, BUTTON_WIDTH, BUTTON_HEIGHT,
                 Component.literal("Ändern nur über /gmapi url <adresse>").withStyle(ChatFormatting.GRAY), this.font));
+        y += ROW_SPACING + 6;
+
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isUpdateNoticeEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Update-Hinweis"),
+                                (btn, value) -> ApiConfig.getInstance().setUpdateNoticeEnabled(value))
+        );
         y += ROW_SPACING + 6;
 
         EditBox tokenBox = new EditBox(this.font, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Token"));
