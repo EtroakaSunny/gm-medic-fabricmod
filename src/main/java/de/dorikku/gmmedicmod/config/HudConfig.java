@@ -26,6 +26,11 @@ public class HudConfig {
      * itself is applied either way — turning this off only silences the message.
      */
     private boolean bloodDrawMessageEnabled = true;
+    /**
+     * Whether the short actionbar countdown after a call's transmission is shown. Purely
+     * visual: the call itself is tracked and displayed in the HUD either way.
+     */
+    private boolean callTimerEnabled = true;
     private boolean loaded = false;
 
     private HudConfig() {}
@@ -61,6 +66,8 @@ public class HudConfig {
                         bloodDisplayEnabled = Boolean.parseBoolean(line.substring("bloodDisplayEnabled=".length()).trim());
                     } else if (line.startsWith("bloodDrawMessageEnabled=")) {
                         bloodDrawMessageEnabled = Boolean.parseBoolean(line.substring("bloodDrawMessageEnabled=".length()).trim());
+                    } else if (line.startsWith("callTimerEnabled=")) {
+                        callTimerEnabled = Boolean.parseBoolean(line.substring("callTimerEnabled=".length()).trim());
                     } else if (line.startsWith("highlightRange=")) {
                         try {
                             highlightRange = clampRange(Double.parseDouble(line.substring("highlightRange=".length()).trim()));
@@ -93,7 +100,10 @@ public class HudConfig {
                     "bloodDisplayEnabled=" + bloodDisplayEnabled + "\n" +
                     "# Show a chat note when another medic donated a player's blood.\n" +
                     "# The cooldown is still applied when this is off\n" +
-                    "bloodDrawMessageEnabled=" + bloodDrawMessageEnabled + "\n";
+                    "bloodDrawMessageEnabled=" + bloodDrawMessageEnabled + "\n" +
+                    "# Show the short countdown above the hotbar when a call's transmission arrives.\n" +
+                    "# The call is tracked and shown in the HUD either way\n" +
+                    "callTimerEnabled=" + callTimerEnabled + "\n";
             Files.writeString(configPath, content);
             GMMedic.LOGGER.info("[HudConfig] Saved config: compactMode={}, highlightEnabled={}, highlightRange={}",
                     compactMode, highlightEnabled, highlightRange);
@@ -143,6 +153,15 @@ public class HudConfig {
 
     public void setBloodDrawMessageEnabled(boolean enabled) {
         bloodDrawMessageEnabled = enabled;
+        save();
+    }
+
+    public boolean isCallTimerEnabled() {
+        return callTimerEnabled;
+    }
+
+    public void setCallTimerEnabled(boolean enabled) {
+        callTimerEnabled = enabled;
         save();
     }
 
