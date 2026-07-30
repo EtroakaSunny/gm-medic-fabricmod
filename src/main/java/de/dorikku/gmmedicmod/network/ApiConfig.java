@@ -19,6 +19,8 @@ public class ApiConfig {
    private boolean loaded = false;
    private String serverUrl = DEFAULT_SERVER_URL;
    private String authToken = "";
+   /** Whether to announce a newer mod version in chat after joining (see UpdateNotifier). */
+   private boolean updateNotice = true;
 
    private ApiConfig() {
    }
@@ -53,6 +55,8 @@ public class ApiConfig {
                      this.serverUrl = line.substring("serverUrl=".length()).trim();
                   } else if (line.startsWith("authToken=")) {
                      this.authToken = line.substring("authToken=".length()).trim();
+                  } else if (line.startsWith("updateNotice=")) {
+                     this.updateNotice = Boolean.parseBoolean(line.substring("updateNotice=".length()).trim());
                   }
                }
             }
@@ -84,6 +88,8 @@ public class ApiConfig {
             + this.serverUrl
             + "\nauthToken="
             + this.authToken
+            + "\n# Announce a newer mod version in chat shortly after joining\nupdateNotice="
+            + this.updateNotice
             + "\n";
          Files.writeString(configPath, content);
          GMMedic.LOGGER.info("[ApiConfig] Saved config");
@@ -112,6 +118,15 @@ public class ApiConfig {
 
    public void resetAuthToken() {
       this.authToken = UUID.randomUUID().toString();
+      this.save();
+   }
+
+   public boolean isUpdateNoticeEnabled() {
+      return this.updateNotice;
+   }
+
+   public void setUpdateNoticeEnabled(boolean enabled) {
+      this.updateNotice = enabled;
       this.save();
    }
 

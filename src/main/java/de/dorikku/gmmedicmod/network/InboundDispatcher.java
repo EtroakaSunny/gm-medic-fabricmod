@@ -12,9 +12,13 @@ import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.model.EmergencyCall.CallType;
+import java.net.URI;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
 
 public final class InboundDispatcher {
 
@@ -40,6 +44,7 @@ public final class InboundDispatcher {
                 case "BLOOD_STATUS"   -> handleBloodStatus(obj);
                 case "BLOOD_SYNC"     -> handleBloodSync(obj);
                 case "BLOOD_LIST"     -> handleBloodList(obj);
+                case "UPDATE_AVAILABLE" -> handleUpdateAvailable(obj);
                 case "PONG"           -> handlePong();
                 case "ERROR"          -> handleError(obj);
                 default               -> GMMedic.LOGGER.debug("[ApiConnection] Unknown inbound type: {}", type);
@@ -190,6 +195,36 @@ public final class InboundDispatcher {
                 + (caller != null ? " von " + caller : "")
                 + " (" + Math.round(distanceBlocks) + "m) und dürfte gleich ankommen.";
         client.player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.AQUA));
+    }
+
+    /**
+     * A newer mod build exists. Purely informational — nothing is gated on it, the medic keeps
+     * every feature. Handed to {@link UpdateNotifier}, which holds it back until a while after
+     * the join and drops repeats from re-AUTHs.
+     */
+    private static void handleUpdateAvailable(JsonObject obj) {
+        String latest = optString(obj, "latestVersion");
+        if (latest == null) return;
+
+        String current = optString(obj, "currentVersion");
+        String downloadUrl = optString(obj, "downloadUrl");
+
+        MutableComponent line = Component.literal("[GM-Medic] ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal("Neue Version verfügbar: ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(latest).withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD));
+        if (current != null && !current.isBlank()) {
+            line.append(Component.literal(" (installiert: " + current + ")").withStyle(ChatFormatting.GRAY));
+        }
+        if (downloadUrl != null && !downloadUrl.isBlank()) {
+            line.append(Component.literal(" "))
+                .append(Component.literal("[Herunterladen]")
+                        .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD)
+                        .withStyle(style -> style
+                                .withClickEvent(new ClickEvent.OpenUrl(URI.create(downloadUrl)))
+                                .withHoverEvent(new HoverEvent.ShowText(Component.literal(downloadUrl)))));
+        }
+        UpdateNotifier.queue(latest, line);
+        GMMedic.LOGGER.info("[ApiConnection] Update available: {} (running {})", latest, current);
     }
 
     /** Answer to a {@code BLOOD_STATUS_REQUEST} for one player. */

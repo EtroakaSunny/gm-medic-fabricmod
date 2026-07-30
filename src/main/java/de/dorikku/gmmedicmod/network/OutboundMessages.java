@@ -7,11 +7,13 @@ public final class OutboundMessages {
 
     private OutboundMessages() {}
 
-    public static String auth(String token, String username) {
+    public static String auth(String token, String username, String modVersion) {
         JsonObject obj = new JsonObject();
         obj.addProperty("type", "AUTH");
         obj.addProperty("token", token);
         obj.addProperty("username", username);
+        // Lets the server answer with UPDATE_AVAILABLE when this build is outdated.
+        obj.addProperty("modVersion", modVersion);
         obj.addProperty("timestamp", System.currentTimeMillis());
         return obj.toString();
     }

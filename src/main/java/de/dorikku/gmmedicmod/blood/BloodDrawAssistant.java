@@ -49,6 +49,18 @@ public final class BloodDrawAssistant {
         return lookTargetName;
     }
 
+    /**
+     * Whether the actionbar is currently this feature's to use — i.e. a syringe is selected
+     * and the blood display is switched on. Other actionbar features (like
+     * {@link de.dorikku.gmmedicmod.handler.CallArrivalCountdown}) check this so they don't
+     * overwrite the blood-status message while it's relevant. With the display off this
+     * feature claims nothing, so a held syringe no longer silences those features.
+     */
+    public static boolean isSyringeSelected(Minecraft client) {
+        return HudConfig.getInstance().isBloodDisplayEnabled()
+                && client.player != null && isHoldingSyringe(client.player);
+    }
+
     public static void tick(Minecraft client) {
         LocalPlayer player = client.player;
         if (player == null || client.level == null
