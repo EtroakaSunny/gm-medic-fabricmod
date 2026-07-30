@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.config.HudConfig;
+import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
@@ -57,6 +58,10 @@ public final class InboundDispatcher {
         ApiConnection conn = ApiConnection.getInstance();
         conn.setAuthenticated(true);
         conn.startPeriodicTasks();
+        // After startPeriodicTasks(): a medic who rejoined while on duty announced that in chat
+        // during the handshake, when the feature gate still swallowed it. Applying it now sends
+        // the DUTY_ON that startPeriodicTasks() skipped, and starts position tracking.
+        ChatMessageHandler.applyPendingDutyState();
         GMMedic.LOGGER.info("[ApiConnection] Authenticated successfully");
 
         Minecraft client = Minecraft.getInstance();
@@ -70,6 +75,8 @@ public final class InboundDispatcher {
     private static void handleAuthFail(JsonObject obj) {
         String reason = obj.has("reason") ? obj.get("reason").getAsString() : "UNKNOWN";
         GMMedic.LOGGER.warn("[ApiConnection] AUTH_FAIL: {}", reason);
+        // The gate stays shut, so nothing may be replayed from what it swallowed.
+        ChatMessageHandler.clearPendingDutyState();
 
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
