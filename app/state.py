@@ -33,7 +33,7 @@ def _now_ms() -> int:
 # Safety net: never keep a bank alarm active longer than this.
 ALARM_MAX_AGE_MS = 30 * 60 * 1000
 
-# Safety net: auto-resolve an open E-Call (non-DEATH) after this long.
+# Safety net: auto-resolve an open call (E-Call or DEATH) after this long.
 CALL_TIMEOUT_MS = int(config.CALL_TIMEOUT_MINUTES * 60 * 1000)
 CALL_TIMEOUT_CHECK_INTERVAL_SECONDS = 60
 
@@ -179,17 +179,16 @@ class LiveState:
                 await self.broadcast_admin({"type": "history_cleared"})
 
     def expire_stale_calls(self) -> list[dict]:
-        """Auto-resolve open E-Calls that have sat unhandled past the timeout.
+        """Auto-resolve open calls (E-Call or DEATH) that have sat unhandled
+        past the timeout, filing them into history as "erledigt".
 
-        DEATH calls are excluded — they carry their own game-provided
-        deadline/timer already. Calls without a `timestamp` (shouldn't happen
-        for anything created after this was added) are left alone rather than
-        guessed at.
+        Calls without a `timestamp` (shouldn't happen for anything created
+        after this was added) are left alone rather than guessed at.
         """
         now = _now_ms()
         expired = []
         for call in list(self.calls.values()):
-            if call.get("resolved") or call.get("callType") == "DEATH":
+            if call.get("resolved"):
                 continue
             created = call.get("timestamp")
             if created is None or now - created < CALL_TIMEOUT_MS:
@@ -201,7 +200,7 @@ class LiveState:
         return expired
 
     async def call_timeout_loop(self) -> None:
-        """Periodically auto-resolves E-Calls that have been open too long."""
+        """Periodically auto-resolves calls that have been open too long."""
         while True:
             await asyncio.sleep(CALL_TIMEOUT_CHECK_INTERVAL_SECONDS)
             for call in self.expire_stale_calls():

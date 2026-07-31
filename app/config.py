@@ -38,9 +38,8 @@ ROSTER_CACHE_SECONDS = int(os.environ.get("GM_ROSTER_CACHE_SECONDS", "60"))
 # out every local midnight in this timezone (not the container's TZ).
 HISTORY_TIMEZONE = os.environ.get("GM_HISTORY_TIMEZONE", "Europe/Berlin")
 
-# Safety net: an open E-Call (non-DEATH call) auto-resolves if nobody handles
-# it within this long. DEATH calls are excluded — they already carry their
-# own game-provided deadline/timer.
+# Safety net: an open call (E-Call or DEATH) auto-resolves and is archived to
+# history ("erledigt") if nobody handles it within this long.
 CALL_TIMEOUT_MINUTES = float(os.environ.get("GM_CALL_TIMEOUT_MINUTES", "20"))
 
 # When a call is assigned, if the medic's last known position is within this
