@@ -54,6 +54,12 @@ async def _authenticate(token: str | None, username: str | None):
 
 async def _send(ws: WebSocket, obj: dict) -> None:
     await ws.send_text(json.dumps(obj))
+    # Looked up rather than threaded through every call site: state.register_mod
+    # runs before any of these sends, so by the time one fires the socket is
+    # already keyed by username (or, pre-auth, simply isn't — nothing to log yet).
+    username = state.mod_ws.get(ws)
+    if username is not None:
+        await state.record_sync(username, "out", obj)
 
 
 def _alarm_sync(alarm: dict) -> dict:
@@ -136,6 +142,7 @@ async def mod_ws(ws: WebSocket):
 
 async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
     mtype = msg.get("type")
+    await state.record_sync(username, "in", msg)
 
     if mtype == "PING":
         await _send(ws, {"type": "PONG", "timestamp": msg.get("timestamp")})

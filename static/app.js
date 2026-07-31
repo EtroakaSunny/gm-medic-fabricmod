@@ -6,6 +6,8 @@ const TOKEN_KEY = "gm_token";
 const medics = new Map(); // username -> {username,x,y,z,on_duty,last_seen}
 const calls = new Map();  // callId -> call (open only — resolved calls move to history)
 const history = new Map(); // callId -> call, resolved earlier today; cleared server-side at midnight
+let syncLog = []; // [{id, ts, username, direction, msgType, message}], newest last — admins only
+const SYNC_LOG_CLIENT_MAX = 1000; // mirrors the server's ring-buffer size
 
 let ws = null;
 let reconnectTimer = null;
@@ -51,6 +53,7 @@ function applyPermissions() {
     document.getElementById("add-medic-form").classList.toggle("hidden", !isAdmin());
     document.getElementById("user-admin-panel").classList.toggle("hidden", !isAdmin());
     document.getElementById("tab-admin").classList.toggle("hidden", !isAdmin());
+    document.getElementById("tab-logs").classList.toggle("hidden", !isAdmin());
     // Re-pack the main grid so hidden panels don't leave empty columns.
     const cols = [];
     if (can("medics")) cols.push("280px");
@@ -148,6 +151,14 @@ function handleWsMessage(msg) {
             (msg.medics || []).forEach(m => medics.set(m.username, m));
             (msg.calls || []).forEach(c => calls.set(c.callId, c));
             (msg.history || []).forEach(c => history.set(c.callId, c));
+            // Only present for admin-role connections (see state.snapshot).
+            syncLog = msg.syncLog || [];
+            renderLogs();
+            break;
+        case "sync_log":
+            syncLog.push(msg.entry);
+            if (syncLog.length > SYNC_LOG_CLIENT_MAX) syncLog.shift();
+            renderLogs();
             break;
         case "medic_update":
             medics.set(msg.medic.username, msg.medic);
@@ -438,6 +449,7 @@ const TABS = {
     beta: document.getElementById("beta-view"),
     account: document.getElementById("account-view"),
     admin: document.getElementById("admin-view"),
+    logs: document.getElementById("logs-view"),
 };
 
 function showTab(which) {
@@ -448,6 +460,7 @@ function showTab(which) {
     if (which === "beta") initNavView();
     if (which === "account") initAccountView();
     if (which === "admin") initAdminView();
+    if (which === "logs") initLogsView();
     requestAnimationFrame(() => {
         if (which === "beta" && navMap) navMap.invalidateSize();
         if (which === "main" && map) map.invalidateSize();
@@ -899,6 +912,69 @@ document.getElementById("mod-update-form").addEventListener("submit", async (e) 
     } catch {
         msg.textContent = "Speichern fehlgeschlagen.";
     }
+});
+
+// --- Logs: mod<->server sync history, per client (admin-only) ---
+//
+// Populated from the admin snapshot's `syncLog` (only sent to role="admin"
+// connections, see state.snapshot/broadcast_admin_role) and kept live via
+// "sync_log" push messages. Never requested over REST — like calls/medics,
+// it's part of the same admin WebSocket feed.
+
+function initLogsView() {
+    if (!isAdmin()) return;
+    renderLogs();
+}
+
+function populateLogsUserFilter() {
+    const sel = document.getElementById("logs-user-filter");
+    const current = sel.value;
+    const users = new Set();
+    medics.forEach((_, u) => users.add(u));
+    syncLog.forEach(e => users.add(e.username));
+    const sorted = [...users].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = `<option value="">Alle Benutzer</option>` +
+        sorted.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+    if (sorted.includes(current)) sel.value = current;
+}
+
+function _logRowHtml(e) {
+    const dirBadge = e.direction === "in"
+        ? `<span class="badge log-in" title="Vom Client empfangen">← ein</span>`
+        : `<span class="badge log-out" title="An den Client gesendet">→ aus</span>`;
+    const time = new Date(e.ts).toLocaleTimeString("de-DE");
+    const detail = { ...e.message };
+    delete detail.type;
+    const detailStr = Object.keys(detail).length ? JSON.stringify(detail) : "";
+    return `<div class="row"><span class="name">${escapeHtml(e.username)}</span>${dirBadge}</div>
+            <div class="row"><span class="log-type">${escapeHtml(e.msgType || "?")}</span><span class="meta">${time}</span></div>
+            ${detailStr ? `<div class="meta log-detail" title="${escapeHtml(detailStr)}">${escapeHtml(detailStr)}</div>` : ""}`;
+}
+
+function renderLogs() {
+    const view = document.getElementById("logs-view");
+    if (!isAdmin() || view.classList.contains("hidden")) return; // skip DOM work while the tab isn't showing
+    populateLogsUserFilter();
+    const userFilter = document.getElementById("logs-user-filter").value;
+    const typeFilter = document.getElementById("logs-type-filter").value.trim().toUpperCase();
+    const ul = document.getElementById("logs-list");
+    ul.innerHTML = "";
+    const list = syncLog
+        .filter(e => (!userFilter || e.username === userFilter)
+            && (!typeFilter || (e.msgType || "").toUpperCase().includes(typeFilter)))
+        .slice().reverse(); // newest first
+    for (const e of list) {
+        const li = document.createElement("li");
+        li.innerHTML = _logRowHtml(e);
+        ul.appendChild(li);
+    }
+}
+
+document.getElementById("logs-user-filter").addEventListener("change", renderLogs);
+document.getElementById("logs-type-filter").addEventListener("input", renderLogs);
+document.getElementById("logs-clear").addEventListener("click", () => {
+    syncLog = [];
+    renderLogs();
 });
 
 // --- Utils ---

@@ -185,6 +185,30 @@ button.ghost.danger:hover { background: var(--danger); color: #fff; }
 .perms label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .perms input { accent-color: var(--accent); }
 
+/* --- Logs tab --- */
+.logs-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+    min-height: 0;
+}
+.logs-panel { max-height: 100%; }
+.logs-toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.logs-toolbar select, .logs-toolbar input { padding: 8px 10px; font-size: 13px; }
+.logs-toolbar input { flex: 1; min-width: 220px; }
+.logs-list li { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.log-type { font-weight: 600; }
+.log-detail {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.badge.log-in { background: rgba(85,177,240,.18); color: #55b1f0; }
+.badge.log-out { background: rgba(70,196,107,.18); color: var(--accent); }
+
 /* Leaflet overrides for the dark panel */
 .leaflet-container { background: #0e1014; font: inherit; }
 .leaflet-bar a { background: var(--panel-2); color: var(--text); border-color: var(--border); }

@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -36,6 +37,17 @@ ALARM_MAX_AGE_MS = 30 * 60 * 1000
 # Safety net: auto-resolve an open call (E-Call or DEATH) after this long.
 CALL_TIMEOUT_MS = int(config.CALL_TIMEOUT_MINUTES * 60 * 1000)
 CALL_TIMEOUT_CHECK_INTERVAL_SECONDS = 60
+
+# How many mod<->server sync messages to keep for the admin "Logs" tab. A
+# ring buffer, not the database — restarting the server clears it, same as
+# every other piece of live state here.
+SYNC_LOG_MAX_ENTRIES = 1000
+
+# Message types excluded from the sync log: PING/PONG is a 30s keep-alive
+# and LOCATION_UPDATE fires every ~2s per on-duty medic (see ApiConnection in
+# the mod) — logging either would drown out everything else within minutes
+# and neither is useful history (positions are already live on the map).
+_SYNC_LOG_EXCLUDED_TYPES = {"PING", "PONG", "LOCATION_UPDATE"}
 
 
 def _seconds_until_next_midnight(tz_name: str) -> float:
@@ -74,8 +86,12 @@ class LiveState:
         self.alarm: dict | None = None
         # mod websocket -> username
         self.mod_ws: dict[WebSocket, str] = {}
-        # connected GUI sockets -> that account's view-permission set
-        self.admin_ws: dict[WebSocket, set] = {}
+        # connected GUI sockets -> {"permissions": set, "role": str}
+        self.admin_ws: dict[WebSocket, dict] = {}
+        # ring buffer of {id, ts, username, direction, msgType, message} —
+        # every mod<->server sync message, for the admin "Logs" tab
+        self.sync_log: deque = deque(maxlen=SYNC_LOG_MAX_ENTRIES)
+        self._sync_log_seq = 0
 
     # --- Mod connection registry ---
 
@@ -92,6 +108,34 @@ class LiveState:
         if username:
             self.online.pop(username, None)
         return username
+
+    # --- Sync log (admin "Logs" tab) ---
+
+    async def record_sync(self, username: str | None, direction: str, message: dict) -> None:
+        """Append one mod<->server message to the log and push it to admin GUIs.
+
+        ``direction`` is "out" (server -> mod) or "in" (mod -> server).
+        Messages without a resolved username (e.g. a rejected AUTH attempt)
+        aren't logged — there is no client row to attach them to yet.
+        """
+        if username is None:
+            return
+        msg_type = message.get("type")
+        if msg_type in _SYNC_LOG_EXCLUDED_TYPES:
+            return
+        self._sync_log_seq += 1
+        entry = {
+            "id": self._sync_log_seq,
+            "ts": _now_ms(),
+            "username": username,
+            "direction": direction,
+            "msgType": msg_type,
+            # Never log the TOFU auth token, even though AUTH itself is
+            # handled before a username is known and so never reaches here.
+            "message": {k: v for k, v in message.items() if k != "token"},
+        }
+        self.sync_log.append(entry)
+        await self.broadcast_admin_role({"type": "sync_log", "entry": entry}, role="admin")
 
     # --- Mutations from mod messages ---
 
@@ -315,9 +359,10 @@ class LiveState:
             "mod_outdated": modversion.is_outdated(mod_version, modversion.latest_version()),
         }
 
-    def snapshot(self, permissions: set | None = None) -> dict:
+    def snapshot(self, permissions: set | None = None, role: str | None = None) -> dict:
         """Full state for one GUI connection, filtered by its permissions
-        (None = everything)."""
+        (None = everything). The sync log is role-gated separately — it's an
+        admin-only view, not something a permission checkbox can grant."""
         def allowed(views: set) -> bool:
             return permissions is None or bool(permissions & views)
 
@@ -327,12 +372,13 @@ class LiveState:
             "calls": list(self.calls.values()) if allowed({"calls", "map"}) else [],
             "history": list(self.history.values()) if allowed({"calls"}) else [],
             "alarm": self.active_alarm() if allowed({"calls", "map"}) else None,
+            "syncLog": list(self.sync_log) if role == "admin" else [],
         }
 
     # --- GUI broadcast ---
 
-    def register_admin(self, ws: WebSocket, permissions: set) -> None:
-        self.admin_ws[ws] = set(permissions)
+    def register_admin(self, ws: WebSocket, permissions: set, role: str) -> None:
+        self.admin_ws[ws] = {"permissions": set(permissions), "role": role}
 
     def unregister_admin(self, ws: WebSocket) -> None:
         self.admin_ws.pop(ws, None)
@@ -343,8 +389,26 @@ class LiveState:
         required = _GUI_MSG_PERMS.get(message.get("type"))
         payload = json.dumps(message)
         dead = []
-        for ws, perms in list(self.admin_ws.items()):
-            if required is not None and not (perms & required):
+        for ws, info in list(self.admin_ws.items()):
+            if required is not None and not (info["permissions"] & required):
+                continue
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.admin_ws.pop(ws, None)
+
+    async def broadcast_admin_role(self, message: dict, role: str) -> None:
+        """Like ``broadcast_admin``, but restricted to GUI accounts holding
+        exactly this role — for admin-only views (the sync log) that a
+        regular account's view permissions can't unlock."""
+        if not self.admin_ws:
+            return
+        payload = json.dumps(message)
+        dead = []
+        for ws, info in list(self.admin_ws.items()):
+            if info["role"] != role:
                 continue
             try:
                 await ws.send_text(payload)
@@ -359,13 +423,15 @@ class LiveState:
             return
         payload = json.dumps(message)
         dead = []
-        for ws in list(self.mod_ws):
+        for ws, username in list(self.mod_ws.items()):
             if ws is exclude:
                 continue
             try:
                 await ws.send_text(payload)
             except Exception:
                 dead.append(ws)
+                continue
+            await self.record_sync(username, "out", message)
         for ws in dead:
             self.mod_ws.pop(ws, None)
 
@@ -383,6 +449,8 @@ class LiveState:
                 await ws.send_text(payload)
             except Exception:
                 dead.append(ws)
+                continue
+            await self.record_sync(username, "out", message)
         for ws in dead:
             self.mod_ws.pop(ws, None)
 
@@ -402,6 +470,8 @@ class LiveState:
                 await ws.send_text(payload)
             except Exception:
                 dead.append(ws)
+                continue
+            await self.record_sync(username, "out", message)
         for ws in dead:
             self.mod_ws.pop(ws, None)
 

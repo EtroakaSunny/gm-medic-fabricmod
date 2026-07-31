@@ -23,10 +23,10 @@ async def admin_ws(ws: WebSocket, token: str | None = None):
     await ws.accept()
     # The feed is filtered by the account's view permissions (see state.py);
     # they are fixed for the lifetime of the connection.
-    state.register_admin(ws, user["permissions"])
+    state.register_admin(ws, user["permissions"], user["role"])
     try:
         # Send the full current state immediately on connect.
-        await ws.send_text(json.dumps(state.snapshot(user["permissions"])))
+        await ws.send_text(json.dumps(state.snapshot(user["permissions"], user["role"])))
         while True:
             # No inbound messages expected; keep the socket draining.
             await ws.receive_text()
