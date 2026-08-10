@@ -75,7 +75,17 @@ public class EmergencyCallHud {
         mgr.removeExpiredResolvedCalls(5_000L);
 
         int screenWidth = client.getWindow().getGuiScaledWidth();
-        int panelX = screenWidth - panelWidth - margin;
+        int screenHeight = client.getWindow().getGuiScaledHeight();
+        // Default anchor stays exactly the previous fixed top-right formula; a dragged position
+        // (set via HudPositionScreen) overrides both coordinates uniformly, regardless of which
+        // branch below is currently drawing.
+        boolean customPos = HudConfig.getInstance().isNotrufePositionCustomized();
+        int panelX = customPos
+                ? clamp((int) Math.round(HudConfig.getInstance().getNotrufePosX() * screenWidth), 0, screenWidth)
+                : screenWidth - panelWidth - margin;
+        int panelY = customPos
+                ? clamp((int) Math.round(HudConfig.getInstance().getNotrufePosY() * screenHeight), 0, screenHeight)
+                : margin;
 
         String header = compact
                 ? "§c§l🚑 " + calls.size()
@@ -85,13 +95,13 @@ public class EmergencyCallHud {
             if (compact) {
                 String emptyText = "§c🚑§8 Keine Notrufe";
                 int emptyWidth = textRenderer.width(emptyText) + padding * 2 + 4;
-                int emptyX = screenWidth - emptyWidth - margin;
-                drawContext.fill(emptyX, margin, emptyX + emptyWidth, margin + padding + lineHeight + padding, BG_COLOR);
-                drawContext.text(textRenderer, emptyText, emptyX + padding, margin + padding, NO_CALLS_COLOR, true);
+                int emptyX = customPos ? panelX : screenWidth - emptyWidth - margin;
+                drawContext.fill(emptyX, panelY, emptyX + emptyWidth, panelY + padding + lineHeight + padding, BG_COLOR);
+                drawContext.text(textRenderer, emptyText, emptyX + padding, panelY + padding, NO_CALLS_COLOR, true);
             } else {
                 int panelHeight = padding * 2 + lineHeight * 2;
-                drawContext.fill(panelX, margin, panelX + panelWidth, margin + panelHeight, BG_COLOR);
-                int y = margin + padding;
+                drawContext.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, BG_COLOR);
+                int y = panelY + padding;
                 drawContext.text(textRenderer, header, panelX + padding, y, HEADER_COLOR, true);
                 y += lineHeight;
                 drawContext.text(textRenderer, "Keine aktiven Notrufe", panelX + padding, y, NO_CALLS_COLOR, true);
@@ -106,9 +116,9 @@ public class EmergencyCallHud {
         }
         totalHeight += padding;
 
-        drawContext.fill(panelX, margin, panelX + panelWidth, margin + totalHeight, BG_COLOR);
+        drawContext.fill(panelX, panelY, panelX + panelWidth, panelY + totalHeight, BG_COLOR);
 
-        int currentY = margin + padding;
+        int currentY = panelY + padding;
         drawContext.text(textRenderer, header, panelX + padding, currentY, HEADER_COLOR, true);
         currentY += lineHeight + padding;
         drawContext.fill(panelX + padding, currentY - 2, panelX + panelWidth - padding, currentY - 1, RESOLVED_COLOR);
@@ -324,5 +334,9 @@ public class EmergencyCallHud {
             str = str.substring(0, str.length() - 1);
         }
         return str + suffix;
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return Math.max(min, Math.min(max, v));
     }
 }

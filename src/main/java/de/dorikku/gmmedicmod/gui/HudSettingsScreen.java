@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.gui;
 
 import de.dorikku.gmmedicmod.config.HudConfig;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -69,10 +70,24 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         );
         y += ROW_SPACING;
 
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isAlarmBannerEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Alarm-Banner"),
+                                (btn, value) -> HudConfig.getInstance().setAlarmBannerEnabled(value))
+        );
+        y += ROW_SPACING;
+
         addStepper(x, y, "Highlight-Reichweite",
                 () -> (int) HudConfig.getInstance().getHighlightRange(),
                 value -> HudConfig.getInstance().setHighlightRange(value),
                 RANGE_STEP, (int) HudConfig.MIN_HIGHLIGHT_RANGE, (int) HudConfig.MAX_HIGHLIGHT_RANGE, " Blöcke");
+        y += ROW_SPACING + 10;
+
+        this.addRenderableWidget(
+                Button.builder(Component.literal("📍 HUD-Position anpassen"), b -> this.minecraft.gui.setScreen(new HudPositionScreen(this)))
+                        .bounds(x, y, BUTTON_WIDTH, BUTTON_HEIGHT)
+                        .build()
+        );
         y += ROW_SPACING + 10;
 
         addBackButton(y);

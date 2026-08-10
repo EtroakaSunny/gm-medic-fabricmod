@@ -40,6 +40,20 @@ public class HudConfig {
     private boolean bloodChatNoteCanDonateEnabled = true;
     /** Same as {@link #bloodChatNoteCanDonateEnabled}, for the red "may not donate yet" note. */
     private boolean bloodChatNoteCannotDonateEnabled = true;
+    /**
+     * Whether the Notrufe panel sits at a medic-dragged spot instead of its default top-right
+     * corner. {@link #notrufePosX}/{@link #notrufePosY} are only meaningful while this is true —
+     * they're the panel's top-left corner as a fraction of the screen size, so the saved spot
+     * still makes sense after a resolution or GUI-scale change.
+     */
+    private boolean notrufePositionCustomized = false;
+    private double notrufePosX = 0.0;
+    private double notrufePosY = 0.0;
+    /** Whether the full-width bank-alarm banner is shown at all. */
+    private boolean alarmBannerEnabled = true;
+    /** Same idea as {@link #notrufePositionCustomized}, but only a Y fraction: the banner always spans the full screen width. */
+    private boolean alarmPositionCustomized = false;
+    private double alarmPosY = 0.0;
     private boolean loaded = false;
 
     private HudConfig() {}
@@ -81,6 +95,24 @@ public class HudConfig {
                         bloodChatNoteCanDonateEnabled = Boolean.parseBoolean(line.substring("bloodChatNoteCanDonateEnabled=".length()).trim());
                     } else if (line.startsWith("bloodChatNoteCannotDonateEnabled=")) {
                         bloodChatNoteCannotDonateEnabled = Boolean.parseBoolean(line.substring("bloodChatNoteCannotDonateEnabled=".length()).trim());
+                    } else if (line.startsWith("notrufePositionCustomized=")) {
+                        notrufePositionCustomized = Boolean.parseBoolean(line.substring("notrufePositionCustomized=".length()).trim());
+                    } else if (line.startsWith("notrufePosX=")) {
+                        try {
+                            notrufePosX = clampFraction(Double.parseDouble(line.substring("notrufePosX=".length()).trim()));
+                        } catch (NumberFormatException ignored) {}
+                    } else if (line.startsWith("notrufePosY=")) {
+                        try {
+                            notrufePosY = clampFraction(Double.parseDouble(line.substring("notrufePosY=".length()).trim()));
+                        } catch (NumberFormatException ignored) {}
+                    } else if (line.startsWith("alarmBannerEnabled=")) {
+                        alarmBannerEnabled = Boolean.parseBoolean(line.substring("alarmBannerEnabled=".length()).trim());
+                    } else if (line.startsWith("alarmPositionCustomized=")) {
+                        alarmPositionCustomized = Boolean.parseBoolean(line.substring("alarmPositionCustomized=".length()).trim());
+                    } else if (line.startsWith("alarmPosY=")) {
+                        try {
+                            alarmPosY = clampFraction(Double.parseDouble(line.substring("alarmPosY=".length()).trim()));
+                        } catch (NumberFormatException ignored) {}
                     } else if (line.startsWith("highlightRange=")) {
                         try {
                             highlightRange = clampRange(Double.parseDouble(line.substring("highlightRange=".length()).trim()));
@@ -121,7 +153,18 @@ public class HudConfig {
                     "# call's caller) may donate blood again\n" +
                     "bloodChatNoteCanDonateEnabled=" + bloodChatNoteCanDonateEnabled + "\n" +
                     "# Show the red chat note when they may not donate yet\n" +
-                    "bloodChatNoteCannotDonateEnabled=" + bloodChatNoteCannotDonateEnabled + "\n";
+                    "bloodChatNoteCannotDonateEnabled=" + bloodChatNoteCannotDonateEnabled + "\n" +
+                    "# Custom drag-and-drop position for the Notrufe panel (top-left corner, as a\n" +
+                    "# fraction 0..1 of the screen size). Only used while notrufePositionCustomized=true\n" +
+                    "notrufePositionCustomized=" + notrufePositionCustomized + "\n" +
+                    "notrufePosX=" + notrufePosX + "\n" +
+                    "notrufePosY=" + notrufePosY + "\n" +
+                    "# Show the full-width bank-alarm banner at all\n" +
+                    "alarmBannerEnabled=" + alarmBannerEnabled + "\n" +
+                    "# Custom drag-and-drop vertical position for the alarm banner (it always spans the\n" +
+                    "# full screen width). Only used while alarmPositionCustomized=true\n" +
+                    "alarmPositionCustomized=" + alarmPositionCustomized + "\n" +
+                    "alarmPosY=" + alarmPosY + "\n";
             Files.writeString(configPath, content);
             GMMedic.LOGGER.info("[HudConfig] Saved config: compactMode={}, highlightEnabled={}, highlightRange={}",
                     compactMode, highlightEnabled, highlightRange);
@@ -210,7 +253,67 @@ public class HudConfig {
         save();
     }
 
+    public boolean isNotrufePositionCustomized() {
+        return notrufePositionCustomized;
+    }
+
+    public double getNotrufePosX() {
+        return notrufePosX;
+    }
+
+    public double getNotrufePosY() {
+        return notrufePosY;
+    }
+
+    /** Stores a dragged top-left corner for the Notrufe panel, as a fraction of the screen size. */
+    public void setNotrufePosition(double xFraction, double yFraction) {
+        notrufePosX = clampFraction(xFraction);
+        notrufePosY = clampFraction(yFraction);
+        notrufePositionCustomized = true;
+        save();
+    }
+
+    /** Back to the default top-right anchor. */
+    public void resetNotrufePosition() {
+        notrufePositionCustomized = false;
+        save();
+    }
+
+    public boolean isAlarmBannerEnabled() {
+        return alarmBannerEnabled;
+    }
+
+    public void setAlarmBannerEnabled(boolean enabled) {
+        alarmBannerEnabled = enabled;
+        save();
+    }
+
+    public boolean isAlarmPositionCustomized() {
+        return alarmPositionCustomized;
+    }
+
+    public double getAlarmPosY() {
+        return alarmPosY;
+    }
+
+    /** Stores a dragged vertical position for the alarm banner, as a fraction of the screen height. */
+    public void setAlarmPositionY(double yFraction) {
+        alarmPosY = clampFraction(yFraction);
+        alarmPositionCustomized = true;
+        save();
+    }
+
+    /** Back to the default fixed position near the top of the screen. */
+    public void resetAlarmPosition() {
+        alarmPositionCustomized = false;
+        save();
+    }
+
     private static double clampRange(double range) {
         return Math.max(MIN_HIGHLIGHT_RANGE, Math.min(MAX_HIGHLIGHT_RANGE, range));
+    }
+
+    private static double clampFraction(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
     }
 }
