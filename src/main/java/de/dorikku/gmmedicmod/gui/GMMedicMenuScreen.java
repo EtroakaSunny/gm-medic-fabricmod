@@ -18,7 +18,7 @@ public class GMMedicMenuScreen extends AbstractGMMedicScreen {
     }
 
     @Override
-    protected void init() {
+    protected void initWidgets() {
         int x = centeredX(BUTTON_WIDTH);
         int y = this.height / 6 + 24;
 
