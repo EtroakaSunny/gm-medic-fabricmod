@@ -67,3 +67,10 @@ class MedicOut(BaseModel):
 class ModUpdateSettings(BaseModel):
     latest_version: str = ""
     download_url: str = ""
+
+
+class AdminSendMessage(BaseModel):
+    """A raw message forwarded verbatim to one or more mod clients, for testing
+    how the mod reacts — never applied to server-side state."""
+    targets: list[str] | None = None  # None/empty = every connected mod client
+    message: dict

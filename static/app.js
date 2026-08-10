@@ -183,6 +183,7 @@ function handleWsMessage(msg) {
     renderCalls();
     renderHistory();
     updateMap();
+    if (isAdmin()) { populateSendTargets(); populateResetTarget(); }
 }
 
 // --- Medic management ---
@@ -891,6 +892,8 @@ async function initAdminView() {
         document.getElementById("mod-update-version").value = s.latest_version || "";
         document.getElementById("mod-update-url").value = s.download_url || "";
     } catch {}
+    populateSendTargets();
+    populateResetTarget();
 }
 
 document.getElementById("mod-update-form").addEventListener("submit", async (e) => {
@@ -911,6 +914,127 @@ document.getElementById("mod-update-form").addEventListener("submit", async (e) 
         msg.textContent = "Gespeichert.";
     } catch {
         msg.textContent = "Speichern fehlgeschlagen.";
+    }
+});
+
+// --- Administration: reset one client's connection ---
+
+function populateResetTarget() {
+    const sel = document.getElementById("admin-reset-target");
+    const current = sel.value;
+    const users = [...medics.keys()].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = users.length
+        ? users.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")
+        : `<option value="">— keine Clients verbunden —</option>`;
+    if (users.includes(current)) sel.value = current;
+}
+
+document.getElementById("admin-reset-btn").addEventListener("click", async () => {
+    const username = document.getElementById("admin-reset-target").value;
+    const msg = document.getElementById("admin-reset-msg");
+    if (!username) return;
+    if (!confirm(`Verbindung von "${username}" wirklich trennen?`)) return;
+    try {
+        const res = await api(`/api/admin/disconnect/${encodeURIComponent(username)}`, { method: "POST" });
+        msg.textContent = res.ok ? "Verbindung getrennt." : "Client war nicht verbunden.";
+    } catch {
+        msg.textContent = "Trennen fehlgeschlagen.";
+    }
+});
+
+// --- Administration: send a raw test message to one/several/all mod clients ---
+//
+// A raw pipe for crafting arbitrary test payloads — forwarded to the chosen
+// client(s) exactly as typed. Never touches server-side state (no fake call
+// or blood-draw record is created); presets just pre-fill the JSON textarea
+// with a valid skeleton for the message types the mod's InboundDispatcher
+// understands.
+
+const SEND_PRESETS = {
+    alarm_start: () => ({
+        type: "ALARM_SYNC", active: true,
+        alarmName: "Testbank", triggeredAtMs: Date.now(),
+    }),
+    alarm_end: () => ({ type: "ALARM_SYNC", active: false }),
+    call_new: () => ({
+        type: "CALL_SYNC",
+        call: {
+            callId: crypto.randomUUID(), callerName: "TestSpieler", callType: "ECALL",
+            reason: "Testgrund", x: 0, y: 64, z: 0, locationName: "",
+            deadlineMs: -1, assignedMedic: null, suggestedMedic: null,
+            resolved: false, resolveReason: null, rejectedBy: null,
+        },
+    }),
+    call_removed: () => ({ type: "CALL_REMOVED", callId: "<call-id einfügen>" }),
+    blood_sync: () => ({
+        type: "BLOOD_SYNC",
+        draw: { playerName: "TestSpieler", medicName: "TestMedic", readyAtMs: Date.now() + 3600_000 },
+    }),
+    blood_list: () => ({
+        type: "BLOOD_LIST",
+        draws: [{ playerName: "TestSpieler", medicName: "TestMedic", readyAtMs: Date.now() + 3600_000 }],
+    }),
+    update_available: () => ({
+        type: "UPDATE_AVAILABLE", latestVersion: "9.9.9", currentVersion: "", downloadUrl: "",
+    }),
+};
+
+function populateSendTargets() {
+    const sel = document.getElementById("admin-send-targets");
+    const current = new Set([...sel.selectedOptions].map(o => o.value));
+    const users = [...medics.keys()].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = users.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+    [...sel.options].forEach(o => { if (current.has(o.value)) o.selected = true; });
+}
+
+document.getElementById("admin-send-preset").addEventListener("change", (e) => {
+    const build = SEND_PRESETS[e.target.value];
+    if (build) document.getElementById("admin-send-json").value = JSON.stringify(build(), null, 2);
+});
+
+document.getElementById("admin-send-all").addEventListener("change", (e) => {
+    document.getElementById("admin-send-targets").classList.toggle("hidden", e.target.checked);
+});
+
+document.getElementById("admin-send-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("admin-send-msg");
+    msg.textContent = "";
+
+    let payload;
+    try {
+        payload = JSON.parse(document.getElementById("admin-send-json").value);
+    } catch {
+        msg.textContent = "Ungültiges JSON.";
+        return;
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) || !payload.type) {
+        msg.textContent = 'Nachricht braucht ein "type"-Feld.';
+        return;
+    }
+
+    const all = document.getElementById("admin-send-all").checked;
+    const targets = all ? null : [...document.getElementById("admin-send-targets").selectedOptions].map(o => o.value);
+    if (!all && targets.length === 0) {
+        msg.textContent = "Kein Ziel-Client ausgewählt.";
+        return;
+    }
+
+    try {
+        const res = await api("/api/admin/send-message", {
+            method: "POST",
+            body: JSON.stringify({ targets, message: payload }),
+        });
+        if (!res.ok) {
+            msg.textContent = (await res.json().catch(() => null))?.detail || "Senden fehlgeschlagen.";
+            return;
+        }
+        const body = await res.json();
+        msg.textContent = body.sent.length
+            ? `Gesendet an: ${body.sent.join(", ")}`
+            : "An niemanden gesendet (Ziel(e) nicht verbunden).";
+    } catch {
+        msg.textContent = "Senden fehlgeschlagen.";
     }
 });
 

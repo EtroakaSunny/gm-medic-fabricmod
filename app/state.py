@@ -454,6 +454,42 @@ class LiveState:
         for ws in dead:
             self.mod_ws.pop(ws, None)
 
+    async def send_to_usernames(self, usernames: set[str], message: dict) -> list[str]:
+        """Sends a message to only the given (connected) mod clients — the admin
+        GUI's "send test message" tool. Returns the usernames actually reached,
+        so the caller can tell a valid-but-offline target from a typo."""
+        if not self.mod_ws or not usernames:
+            return []
+        payload = json.dumps(message)
+        sent = []
+        dead = []
+        for ws, username in list(self.mod_ws.items()):
+            if username not in usernames:
+                continue
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.append(ws)
+                continue
+            await self.record_sync(username, "out", message)
+            sent.append(username)
+        for ws in dead:
+            self.mod_ws.pop(ws, None)
+        return sent
+
+    async def disconnect_mod(self, username: str, code: int = 4000) -> bool:
+        """Force-closes one mod client's connection (the admin GUI's "reset
+        connection" tool). ``mod_ws`` unregisters itself the normal way, via the
+        WebSocketDisconnect the close triggers in the mod_ws handler's loop."""
+        for ws, u in list(self.mod_ws.items()):
+            if u == username:
+                try:
+                    await ws.close(code=code)
+                except Exception:
+                    pass
+                return True
+        return False
+
     async def broadcast_mods_on_duty(self, message: dict, exclude: WebSocket | None = None) -> None:
         """Fan a message out to connected mod clients whose medic IS on duty."""
         if not self.mod_ws:

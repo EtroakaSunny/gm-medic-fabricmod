@@ -6,7 +6,7 @@ admin role. See ``api_users.py`` for accounts and ``security.py`` for roles.
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from . import database
-from .models import LoginRequest, MedicCreate, MedicOut, TokenResponse
+from .models import AdminSendMessage, LoginRequest, MedicCreate, MedicOut, TokenResponse
 from .security import create_access_token, get_current_admin, require_permission, verify_password
 from .state import state
 
@@ -76,3 +76,27 @@ def get_calls(_: dict = Depends(require_permission("calls"))):
 @router.get("/online")
 def get_online(_: dict = Depends(require_permission("medics"))):
     return [state.medic_view(u) for u in state.online]
+
+
+@router.post("/admin/send-message")
+async def admin_send_message(body: AdminSendMessage, _: dict = Depends(get_current_admin)):
+    """Admin GUI test tool: forwards ``body.message`` verbatim to the chosen mod
+    client(s) (or every connected one, if ``targets`` is empty/omitted). Purely
+    a debugging aid — never touches server-side state (no fake call/blood-draw
+    record is created), so it can't desync the server from what it actually
+    tracks."""
+    if not isinstance(body.message, dict) or not body.message.get("type"):
+        raise HTTPException(status_code=400, detail='message.type required')
+    if body.targets:
+        sent = await state.send_to_usernames(set(body.targets), body.message)
+    else:
+        await state.broadcast_mods(body.message)
+        sent = list(state.mod_ws.values())
+    return {"sent": sent}
+
+
+@router.post("/admin/disconnect/{username}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_disconnect(username: str, _: dict = Depends(get_current_admin)):
+    """Admin GUI "reset connection" tool: force-closes one client's socket."""
+    if not await state.disconnect_mod(username):
+        raise HTTPException(status_code=404, detail="client not connected")

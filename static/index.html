@@ -111,7 +111,7 @@
             </section>
         </main>
 
-        <main id="admin-view" class="account-grid hidden">
+        <main id="admin-view" class="admin-grid hidden">
             <section class="panel">
                 <h2>Mod-Update</h2>
                 <p class="meta">Legt fest, welche Mod-Version aktuell ist. Sanitäter mit einer
@@ -124,6 +124,48 @@
                     <input id="mod-update-url" type="url" placeholder="https://…" autocomplete="off">
                     <button type="submit">Speichern</button>
                     <p id="mod-update-msg" class="meta"></p>
+                </form>
+            </section>
+
+            <section class="panel" id="admin-reset-panel">
+                <h2>Client-Verbindung zurücksetzen</h2>
+                <p class="meta">Trennt die Verbindung eines einzelnen Mod-Clients zum Server.
+                    Der Client behandelt das wie jeden anderen Verbindungsabbruch (eigene
+                    Reconnect-Logik des Mods).</p>
+                <div class="add-form">
+                    <select id="admin-reset-target"></select>
+                    <button id="admin-reset-btn" class="ghost danger">Verbindung trennen</button>
+                    <p id="admin-reset-msg" class="meta"></p>
+                </div>
+            </section>
+
+            <section class="panel" id="admin-test-panel">
+                <h2>Test-Nachrichten senden</h2>
+                <p class="meta">Sendet eine Rohnachricht direkt an die gewählten (oder alle
+                    verbundenen) Mod-Clients, um die Client-Reaktion zu testen — verändert nie
+                    den Server-Zustand (es wird z. B. kein echter Notruf angelegt).</p>
+                <form id="admin-send-form" class="add-form">
+                    <label class="meta" for="admin-send-preset">Vorlage</label>
+                    <select id="admin-send-preset">
+                        <option value="">— Eigene Nachricht —</option>
+                        <option value="alarm_start">Bankraub: Start</option>
+                        <option value="alarm_end">Bankraub: Ende</option>
+                        <option value="call_new">Notruf: Neu / Aktualisieren</option>
+                        <option value="call_removed">Notruf: Löschen</option>
+                        <option value="blood_sync">Blutspende: Einzel-Sync</option>
+                        <option value="blood_list">Blutspende: Listen-Sync</option>
+                        <option value="update_available">Update-Hinweis</option>
+                    </select>
+
+                    <label class="meta" for="admin-send-json">Nachricht (JSON)</label>
+                    <textarea id="admin-send-json" rows="10" spellcheck="false" placeholder='{"type": "..."}'></textarea>
+
+                    <label class="meta">Ziel</label>
+                    <label class="admin-send-all"><input type="checkbox" id="admin-send-all" checked> Alle verbundenen Clients</label>
+                    <select id="admin-send-targets" multiple size="6" class="hidden"></select>
+
+                    <button type="submit">Senden</button>
+                    <p id="admin-send-msg" class="meta"></p>
                 </form>
             </section>
         </main>
