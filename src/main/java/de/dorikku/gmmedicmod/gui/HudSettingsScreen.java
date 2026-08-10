@@ -49,6 +49,20 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         y += ROW_SPACING;
 
         this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isBloodChatNoteCanDonateEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Blut-Chat (Kann spenden)"),
+                                (btn, value) -> HudConfig.getInstance().setBloodChatNoteCanDonateEnabled(value))
+        );
+        y += ROW_SPACING;
+
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isBloodChatNoteCannotDonateEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Blut-Chat (Kann nicht)"),
+                                (btn, value) -> HudConfig.getInstance().setBloodChatNoteCannotDonateEnabled(value))
+        );
+        y += ROW_SPACING;
+
+        this.addRenderableWidget(
                 CycleButton.onOffBuilder(cfg.isCallTimerEnabled())
                         .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Notruf-Timer"),
                                 (btn, value) -> HudConfig.getInstance().setCallTimerEnabled(value))

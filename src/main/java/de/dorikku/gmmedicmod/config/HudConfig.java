@@ -31,6 +31,15 @@ public class HudConfig {
      * visual: the call itself is tracked and displayed in the HUD either way.
      */
     private boolean callTimerEnabled = true;
+    /**
+     * Whether the green "may donate" chat note is shown — posted under a player's own chat/funk
+     * line when they mention "Blut", and under an emergency call once the caller's status is
+     * known. Independent of {@link #bloodChatNoteCannotDonateEnabled} so a medic can silence
+     * either half; the status is still queried from the API server either way.
+     */
+    private boolean bloodChatNoteCanDonateEnabled = true;
+    /** Same as {@link #bloodChatNoteCanDonateEnabled}, for the red "may not donate yet" note. */
+    private boolean bloodChatNoteCannotDonateEnabled = true;
     private boolean loaded = false;
 
     private HudConfig() {}
@@ -68,6 +77,10 @@ public class HudConfig {
                         bloodDrawMessageEnabled = Boolean.parseBoolean(line.substring("bloodDrawMessageEnabled=".length()).trim());
                     } else if (line.startsWith("callTimerEnabled=")) {
                         callTimerEnabled = Boolean.parseBoolean(line.substring("callTimerEnabled=".length()).trim());
+                    } else if (line.startsWith("bloodChatNoteCanDonateEnabled=")) {
+                        bloodChatNoteCanDonateEnabled = Boolean.parseBoolean(line.substring("bloodChatNoteCanDonateEnabled=".length()).trim());
+                    } else if (line.startsWith("bloodChatNoteCannotDonateEnabled=")) {
+                        bloodChatNoteCannotDonateEnabled = Boolean.parseBoolean(line.substring("bloodChatNoteCannotDonateEnabled=".length()).trim());
                     } else if (line.startsWith("highlightRange=")) {
                         try {
                             highlightRange = clampRange(Double.parseDouble(line.substring("highlightRange=".length()).trim()));
@@ -103,7 +116,12 @@ public class HudConfig {
                     "bloodDrawMessageEnabled=" + bloodDrawMessageEnabled + "\n" +
                     "# Show the short countdown above the hotbar when a call's transmission arrives.\n" +
                     "# The call is tracked and shown in the HUD either way\n" +
-                    "callTimerEnabled=" + callTimerEnabled + "\n";
+                    "callTimerEnabled=" + callTimerEnabled + "\n" +
+                    "# Show the green chat note when a player who mentioned \"Blut\" (or an emergency\n" +
+                    "# call's caller) may donate blood again\n" +
+                    "bloodChatNoteCanDonateEnabled=" + bloodChatNoteCanDonateEnabled + "\n" +
+                    "# Show the red chat note when they may not donate yet\n" +
+                    "bloodChatNoteCannotDonateEnabled=" + bloodChatNoteCannotDonateEnabled + "\n";
             Files.writeString(configPath, content);
             GMMedic.LOGGER.info("[HudConfig] Saved config: compactMode={}, highlightEnabled={}, highlightRange={}",
                     compactMode, highlightEnabled, highlightRange);
@@ -162,6 +180,24 @@ public class HudConfig {
 
     public void setCallTimerEnabled(boolean enabled) {
         callTimerEnabled = enabled;
+        save();
+    }
+
+    public boolean isBloodChatNoteCanDonateEnabled() {
+        return bloodChatNoteCanDonateEnabled;
+    }
+
+    public void setBloodChatNoteCanDonateEnabled(boolean enabled) {
+        bloodChatNoteCanDonateEnabled = enabled;
+        save();
+    }
+
+    public boolean isBloodChatNoteCannotDonateEnabled() {
+        return bloodChatNoteCannotDonateEnabled;
+    }
+
+    public void setBloodChatNoteCannotDonateEnabled(boolean enabled) {
+        bloodChatNoteCannotDonateEnabled = enabled;
         save();
     }
 
