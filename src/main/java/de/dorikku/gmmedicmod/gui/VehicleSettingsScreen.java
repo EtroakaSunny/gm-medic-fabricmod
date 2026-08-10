@@ -15,7 +15,7 @@ public class VehicleSettingsScreen extends AbstractGMMedicScreen {
     }
 
     @Override
-    protected void init() {
+    protected void initWidgets() {
         VehicleConfig cfg = VehicleConfig.getInstance();
         int x = centeredX(BUTTON_WIDTH);
         int y = this.height / 6 + 24;

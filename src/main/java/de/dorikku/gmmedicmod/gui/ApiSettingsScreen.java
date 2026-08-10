@@ -24,7 +24,7 @@ public class ApiSettingsScreen extends AbstractGMMedicScreen {
     }
 
     @Override
-    protected void init() {
+    protected void initWidgets() {
         confirmingReset = false;
         ApiConnection conn = ApiConnection.getInstance();
         ApiConfig cfg = ApiConfig.getInstance();
