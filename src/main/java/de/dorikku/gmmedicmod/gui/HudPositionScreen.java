@@ -47,7 +47,7 @@ public class HudPositionScreen extends AbstractGMMedicScreen {
     }
 
     @Override
-    protected void init() {
+    protected void initWidgets() {
         HudConfig cfg = HudConfig.getInstance();
         boolean compact = cfg.isCompactMode();
         notrufeW = compact ? NOTRUFE_WIDTH_COMPACT : NOTRUFE_WIDTH_NORMAL;
