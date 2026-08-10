@@ -289,7 +289,7 @@ public class ChatMessageHandler {
             if (call != null) {
                 GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
                 CallArrivalCountdown.start();
-                requestBloodStatusForCaller(call.getCallerName());
+                requestBloodStatusForCaller(call);
             }
         }
     }
@@ -380,9 +380,16 @@ public class ChatMessageHandler {
      * whether they may donate again as soon as the transmission arrives — before anyone has
      * even aimed a syringe at them. Reuses {@link BloodChatNoteHandler} so the same green/red
      * note (and the same two config toggles) applies here as for a chat mention.
+     *
+     * <p>Only for a normal Notruf (ECALL) whose reason mentions "Blut" — a Todesmeldung (DEATH)
+     * or an ecall for an unrelated reason (e.g. a plain heal call) never triggers this.</p>
      */
-    private static void requestBloodStatusForCaller(String callerName) {
-        String name = EmergencyCallManager.normalizeCallerName(callerName);
+    private static void requestBloodStatusForCaller(EmergencyCall call) {
+        if (call.getType() != EmergencyCall.CallType.ECALL) return;
+        String reason = call.getReason();
+        if (reason == null || !BLOOD_MENTION.matcher(reason).find()) return;
+
+        String name = EmergencyCallManager.normalizeCallerName(call.getCallerName());
         if (name == null || name.equals("Unbekannt") || name.equals("...")) return;
         BloodChatNoteHandler.request(name);
     }
