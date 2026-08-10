@@ -48,10 +48,12 @@ public class ChatMessageHandler {
     // <player> erfolgreich gespendet." Nobody else sees it, so reporting it to the API
     // server is the only way the other medics learn about the player's 60 min cooldown.
     private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
-    // Any word containing "blut" (Blutspende, verblutet, Blutgruppe, ...) or the community slang
-    // "spendi". "spende" was tried too but dropped again — "Spender" alone is a very common,
-    // unrelated German word (e.g. Seifenspender/Klopapierspender, a soap/paper-towel dispenser).
-    private static final Pattern BLOOD_MENTION = Pattern.compile("(?i)\\b\\p{L}*(?:blut|spendi)\\p{L}*\\b");
+    // Any word containing "blut" (Blutspende, verblutet, Blutgruppe, ...), "spende" (spenden,
+    // Spende, gespendet, ...) or the community slang "spendi". The "spende" branch excludes the
+    // bare word "Spender" via a negative lookahead — that alone is a very common, unrelated
+    // German word for "dispenser" (Seifenspender, Klopapierspender), unlike its declined/compound
+    // forms ("Spenderliste", "Spendern", ...), which stay ambiguous enough to still count.
+    private static final Pattern BLOOD_MENTION = Pattern.compile("(?i)\\b\\p{L}*(?:blut|spende(?!r\\b)|spendi)\\p{L}*\\b");
     // Bank alarm, only trusted from the D-Funk: "Der Alarm der <Bank> wurde ausgelöst"
     private static final Pattern DFUNK_ALARM_START   = Pattern.compile("Der Alarm der (.+?) wurde ausgelöst");
     private static final String  DFUNK_ALARM_END     = "Der Bankraub wurde beendet";
