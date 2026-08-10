@@ -48,10 +48,10 @@ public class ChatMessageHandler {
     // <player> erfolgreich gespendet." Nobody else sees it, so reporting it to the API
     // server is the only way the other medics learn about the player's 60 min cooldown.
     private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
-    // Any word containing "blut" (Blutspende, verblutet, Blutgruppe, ...). Unlike HIGHLIGHT_KEYWORD's
-    // short English words, "blut" is specific enough in German that no common unrelated word
-    // contains it as a substring, so a plain word-boundary match needs no extra exclusion list.
-    private static final Pattern BLOOD_MENTION = Pattern.compile("(?i)\\b\\p{L}*blut\\p{L}*\\b");
+    // Any word containing "blut" (Blutspende, verblutet, Blutgruppe, ...), "spende" (spenden,
+    // gespendet, Spender, ...) or the community slang "spendi" (also catches "spendieren" as a
+    // side effect — a rare false positive, not worth an exclusion list for how uncommon it is).
+    private static final Pattern BLOOD_MENTION = Pattern.compile("(?i)\\b\\p{L}*(?:blut|spende|spendi)\\p{L}*\\b");
     // Bank alarm, only trusted from the D-Funk: "Der Alarm der <Bank> wurde ausgelöst"
     private static final Pattern DFUNK_ALARM_START   = Pattern.compile("Der Alarm der (.+?) wurde ausgelöst");
     private static final String  DFUNK_ALARM_END     = "Der Bankraub wurde beendet";

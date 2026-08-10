@@ -124,6 +124,7 @@ public class GMMedicClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerStatusCommand);
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerMenuCommand);
         ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerApiCommands);
+        ClientCommandRegistrationCallback.EVENT.register(GMMedicClient::registerBloodCommand);
 
         GMMedic.LOGGER.info("[GM-Medic] Client initialized");
     }
@@ -175,6 +176,41 @@ public class GMMedicClient implements ClientModInitializer {
                 ctx.getSource().sendFeedback(Text.literal(
                         "§eNutze §f/gmapi url <adresse> §e— alle anderen API-Einstellungen findest du über §f/gmmenu§e."
                 ));
+                return 1;
+            })
+        );
+    }
+
+    /**
+     * {@code /meb <Spieler>} (medicblood) — manually asks the API server whether a player is on
+     * a blood-donation cooldown, without needing to aim a syringe at them or wait for a chat
+     * mention. Reuses {@link BloodChatNoteHandler} so the answer shows up as the same green/red
+     * note, respecting the same two config toggles.
+     */
+    private static void registerBloodCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
+        dispatcher.register(ClientCommandManager.literal("meb")
+            .then(ClientCommandManager.argument("spieler", StringArgumentType.word()).executes(ctx -> {
+                if (!ApiConnection.getInstance().isFeatureUnlocked()) {
+                    ctx.getSource().sendFeedback(
+                            Text.literal("[GM-Medic] Noch nicht verifiziert.").formatted(Formatting.RED)
+                    );
+                    return 0;
+                }
+                String name = EmergencyCallManager.normalizeCallerName(StringArgumentType.getString(ctx, "spieler"));
+                if (name == null) {
+                    ctx.getSource().sendFeedback(
+                            Text.literal("[GM-Medic] Ungültiger Spielername.").formatted(Formatting.RED)
+                    );
+                    return 0;
+                }
+                BloodChatNoteHandler.request(name);
+                ctx.getSource().sendFeedback(
+                        Text.literal("[GM-Medic] Frage Blutspende-Status von " + name + " ab...").formatted(Formatting.AQUA)
+                );
+                return 1;
+            }))
+            .executes(ctx -> {
+                ctx.getSource().sendFeedback(Text.literal("§eNutze §f/meb <Spieler>"));
                 return 1;
             })
         );
