@@ -1,6 +1,7 @@
 package de.dorikku.gmmedicmod.handler;
 
 import de.dorikku.gmmedicmod.GMMedic;
+import de.dorikku.gmmedicmod.blood.BloodChatNoteHandler;
 import de.dorikku.gmmedicmod.config.ReviveReplyConfig;
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
@@ -47,6 +48,10 @@ public class ChatMessageHandler {
     // <player> erfolgreich gespendet." Nobody else sees it, so reporting it to the API
     // server is the only way the other medics learn about the player's 60 min cooldown.
     private static final Pattern BLOOD_DONATED_TARGET = Pattern.compile("Du hast das Blut von\\s+(.+?)\\s+erfolgreich gespendet");
+    // Any word containing "blut" (Blutspende, verblutet, Blutgruppe, ...). Unlike HIGHLIGHT_KEYWORD's
+    // short English words, "blut" is specific enough in German that no common unrelated word
+    // contains it as a substring, so a plain word-boundary match needs no extra exclusion list.
+    private static final Pattern BLOOD_MENTION = Pattern.compile("(?i)\\b\\p{L}*blut\\p{L}*\\b");
     // Bank alarm, only trusted from the D-Funk: "Der Alarm der <Bank> wurde ausgelöst"
     private static final Pattern DFUNK_ALARM_START   = Pattern.compile("Der Alarm der (.+?) wurde ausgelöst");
     private static final String  DFUNK_ALARM_END     = "Der Bankraub wurde beendet";
@@ -146,6 +151,8 @@ public class ChatMessageHandler {
         }
 
         if (!manager.isInDuty()) return;
+
+        checkBloodMention(msg);
 
         if (msg.contains("ZENTRALE") && msg.contains("hat seinen Notruf zurückgezogen")) {
             extractAndResolve(WITHDRAW_CALLER, msg, "withdrawn", "Zurückgezogen");
@@ -282,6 +289,7 @@ public class ChatMessageHandler {
             if (call != null) {
                 GMMedic.LOGGER.info("[GM-Medic] Call finalized: {} — {}", call.getCallerName(), call.getReason());
                 CallArrivalCountdown.start();
+                requestBloodStatusForCaller(call.getCallerName());
             }
         }
     }
@@ -342,6 +350,41 @@ public class ChatMessageHandler {
         BloodDonationManager.getInstance().applyLocalDraw(player);
         ApiConnection.getInstance().send(OutboundMessages.bloodDrawn(getPlayerName(), player));
         GMMedic.LOGGER.info("[GM-Medic] Blood donated for {} — reported to API", player);
+    }
+
+    /**
+     * A player mentions "Blut" in their own normal chat or funk line — asks
+     * {@link BloodChatNoteHandler} to look up their donation status and post a small
+     * local-only confirmation line right after their message. Works for both plain chat
+     * ("Name » message") and funk ("[FUNK] (Rang) Name » message" / "Ⓛ [Rang] Name »
+     * message"): either way the sender's name is exactly the run of word characters right
+     * before the "»", so one pattern covers both without needing to branch on {@code isFunk}.
+     */
+    private static void checkBloodMention(String msg) {
+        if (msg.contains("ZENTRALE")) return;                    // e.g. "[FUNK] ZENTRALE » ..."
+        if (msg.contains("BERMITTLUNG")) return;                 // DATENÜBERMITTLUNG header/blocks
+        if (manager.getState() == ParsingState.PARSING) return;  // mid-transmission lines
+
+        Matcher m = CHAT_SENDER_BODY.matcher(msg);
+        if (!m.find()) return;
+        if (!BLOOD_MENTION.matcher(m.group(2)).find()) return;
+
+        String sender = EmergencyCallManager.normalizeCallerName(m.group(1));
+        if (sender == null) return;
+        BloodChatNoteHandler.request(sender);
+        GMMedic.LOGGER.info("[GM-Medic] {} mentioned Blut — requesting donation status", sender);
+    }
+
+    /**
+     * Warms the donation-status cache for a freshly finalized call's caller, so a medic sees
+     * whether they may donate again as soon as the transmission arrives — before anyone has
+     * even aimed a syringe at them. Reuses {@link BloodChatNoteHandler} so the same green/red
+     * note (and the same two config toggles) applies here as for a chat mention.
+     */
+    private static void requestBloodStatusForCaller(String callerName) {
+        String name = EmergencyCallManager.normalizeCallerName(callerName);
+        if (name == null || name.equals("Unbekannt") || name.equals("...")) return;
+        BloodChatNoteHandler.request(name);
     }
 
     private static String sanitize(String msg) {
