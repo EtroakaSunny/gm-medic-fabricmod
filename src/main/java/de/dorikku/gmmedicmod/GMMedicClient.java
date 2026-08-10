@@ -3,6 +3,7 @@ package de.dorikku.gmmedicmod;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import de.dorikku.gmmedicmod.blood.BloodChatNoteHandler;
 import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
 import de.dorikku.gmmedicmod.command.DebugCommands;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
@@ -60,6 +61,7 @@ public class GMMedicClient implements ClientModInitializer {
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(BloodChatNoteHandler::tick);
         ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
         ClientTickEvents.END_CLIENT_TICK.register(UpdateNotifier::tick);
 
@@ -106,6 +108,7 @@ public class GMMedicClient implements ClientModInitializer {
             ChatMessageHandler.clearPendingDutyState();
             AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
+            BloodChatNoteHandler.clear();
             UpdateNotifier.onDisconnect();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");
