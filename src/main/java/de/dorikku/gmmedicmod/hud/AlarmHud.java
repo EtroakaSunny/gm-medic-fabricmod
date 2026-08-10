@@ -1,5 +1,6 @@
 package de.dorikku.gmmedicmod.hud;
 
+import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import net.minecraft.client.DeltaTracker;
@@ -24,6 +25,7 @@ public class AlarmHud {
     public static void render(GuiGraphicsExtractor ctx, DeltaTracker tickCounter) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
+        if (!HudConfig.getInstance().isAlarmBannerEnabled()) return;
         AlarmManager alarm = AlarmManager.getInstance();
         if (!alarm.isActive()) return;
         if (EmergencyCallManager.getInstance().isInDuty()) return;
@@ -33,9 +35,13 @@ public class AlarmHud {
         boolean flash = System.currentTimeMillis() / FLASH_MS % 2 == 0;
         Font text = client.font;
         int width = client.getWindow().getGuiScaledWidth();
+        int screenHeight = client.getWindow().getGuiScaledHeight();
 
-        int top = 12;
         int height = 44;
+        HudConfig cfg = HudConfig.getInstance();
+        int top = cfg.isAlarmPositionCustomized()
+                ? Math.max(0, Math.min(screenHeight - height, (int) Math.round(cfg.getAlarmPosY() * screenHeight)))
+                : 12;
         ctx.fill(0, top, width, top + height, flash ? BG_BRIGHT : BG_DARK);
         ctx.fill(0, top, width, top + 2, flash ? BORDER_BRIGHT : BORDER_DARK);
         ctx.fill(0, top + height - 2, width, top + height, flash ? BORDER_BRIGHT : BORDER_DARK);
