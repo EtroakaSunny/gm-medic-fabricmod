@@ -211,8 +211,9 @@ public class DebugCommands {
                 .then(ClientCommands.literal("testduty")
                         .executes(ctx -> {
                             FabricClientCommandSource src = ctx.getSource();
+                            String playerName = ctx.getSource().getPlayer().getScoreboardName();
                             src.sendFeedback(Component.literal("\u00a77Simuliere Dienst-Nachrichten durch den MessageHandler..."));
-                            simulateChatMessage("\u00a7e\u2503 \u00a7620:58:12 \u00a78\u00bb \u00a7r\u00bb \u2714 Du bist nun im Dienst.");
+                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " Trete Meine Schicht an, over");
                             src.sendFeedback(Component.literal("\u00a77\u2192 \u00a7aDienst betreten gesendet."));
                             return 1;
                         })
@@ -264,8 +265,7 @@ public class DebugCommands {
                             src.sendFeedback(Component.literal("\u00a76\u00a7l--- Volle GermanMiner-Simulation ---"));
 
                             // Step 1: Join duty
-                            simulateChatMessage("\u00a7e\u2503 \u00a7620:58:12 \u00a78\u00bb \u00a7r\u00bb \u2714 Du bist nun im Dienst.");
-                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " \u00bb Ich bin wieder auf dem Server! *Roger*");
+                            simulateChatMessage("[FUNK] (Assistent) " + playerName + " Trete Meine Schicht an, over");
 
                             // Step 2: Death call comes in
                             simulateChatMessage("[FUNK] ZENTRALE \u00bb Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten r\u00fcber!");

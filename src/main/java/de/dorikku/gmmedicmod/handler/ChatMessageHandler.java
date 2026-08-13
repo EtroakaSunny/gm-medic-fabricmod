@@ -36,6 +36,7 @@ public class ChatMessageHandler {
     private static final Pattern CANCEL_DEATH_CALLER = Pattern.compile("Ich kann die Todesmeldung von (.+?)\\s+nicht mehr erledigen");
     private static final Pattern FUNK_SENDER_SIM     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(.+?)\\s*»");
     private static final Pattern FUNK_SENDER_ANY     = Pattern.compile("[\\])]\\s+(.+?)\\s*»");
+    private static final Pattern FUNK_SHIFT_JOIN     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(\\S+)\\s+Trete\\s+Meine\\s+Schicht\\s+an", Pattern.CASE_INSENSITIVE);
     // Public chat line: "...<PlayerName> » <message>". The player name is the word right before the ».
     private static final Pattern CHAT_SENDER_BODY    = Pattern.compile("(\\w{1,16})\\s*»\\s*(.+)$");
     // Whole-word match so "low" does not fire on "below"/"yellow", "heal" not on "health" and
@@ -410,10 +411,17 @@ public class ChatMessageHandler {
      * player's own FUNK broadcast. Returns {@code null} when the message says nothing about duty.
      */
     private static Boolean detectDutyState(String msg, boolean isFunk) {
-        if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) return true;
         if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) return false;
 
         if (!isFunk) return null;
+
+        Matcher shiftJoin = FUNK_SHIFT_JOIN.matcher(msg);
+        if (shiftJoin.find()) {
+            String sender = shiftJoin.group(1).trim();
+            String playerName = getPlayerName();
+            if (playerName == null || sender.equalsIgnoreCase(playerName)) return true;
+        }
+
         if (!isOwnMessage(getPlayerName(), extractFunkSender(msg), msg)) return null;
 
         if (msg.contains("Ich bin wieder auf dem Server")) return true;
