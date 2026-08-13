@@ -27,6 +27,7 @@ public class ChatMessageHandler {
     private static final Pattern CANCEL_DEATH_CALLER = Pattern.compile("Ich kann die Todesmeldung von (.+?)\\s+nicht mehr erledigen");
     private static final Pattern FUNK_SENDER_SIM     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(.+?)\\s*»");
     private static final Pattern FUNK_SENDER_ANY     = Pattern.compile("[\\])]\\s+(.+?)\\s*»");
+    private static final Pattern FUNK_SHIFT_JOIN     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(\\S+)\\s+Trete\\s+Meine\\s+Schicht\\s+an", Pattern.CASE_INSENSITIVE);
 
     public static void onGameMessage(Text message, boolean overlay) {
         if (overlay) return;
@@ -45,12 +46,6 @@ public class ChatMessageHandler {
 
         boolean isFunk = isFunkMessage(msg);
 
-        if (msg.contains("Du bist nun im Dienst") || msg.contains("Du bist jetzt im Dienst")) {
-            manager.setInDuty(true);
-            GMMedic.LOGGER.info("[GM-Medic] On duty (direct)");
-            return;
-        }
-
         if (msg.contains("Du bist nicht mehr im Dienst") || msg.contains("Du hast den Dienst verlassen")) {
             manager.setInDuty(false);
             GMMedic.LOGGER.info("[GM-Medic] Off duty (direct)");
@@ -59,12 +54,23 @@ public class ChatMessageHandler {
 
         if (isFunk) {
             String playerName = getPlayerName();
+
+            Matcher shiftJoinMatcher = FUNK_SHIFT_JOIN.matcher(msg);
+            if (shiftJoinMatcher.find()) {
+                String sender = shiftJoinMatcher.group(1).trim();
+                if (playerName == null || sender.equalsIgnoreCase(playerName)) {
+                    manager.setInDuty(true);
+                    GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK shift join)");
+                    return;
+                }
+            }
+
             String funkSender = extractFunkSender(msg);
             boolean isOwn = isOwnMessage(playerName, funkSender, msg);
             if (isOwn) {
                 if (msg.contains("Ich bin wieder auf dem Server")) {
                     manager.setInDuty(true);
-                    GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK join)");
+                    GMMedic.LOGGER.info("[GM-Medic] On duty (FUNK rejoin)");
                     return;
                 }
                 if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) {
