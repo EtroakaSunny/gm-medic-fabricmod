@@ -27,10 +27,17 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
         return t;
     });
 
+    /** Grace window after losing an established connection before features actually lock again. */
+    private static final long AUTH_GRACE_MS = 5_000L;
+
     private volatile WebSocket webSocket;
     private volatile boolean authenticated = false;
     private volatile boolean wantConnected = false;
     private volatile long lastPongMs = 0L;
+    /** Set once this session has verified at least once; a fresh, never-verified session gets no grace. */
+    private volatile boolean everAuthenticated = false;
+    /** Timestamp of the last time an established authentication was lost. */
+    private volatile long lastAuthDropMs = 0L;
     private int reconnectAttempts = 0;
 
     private ScheduledFuture<?> pingTask;
@@ -53,7 +60,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
     public void disconnect() {
         wantConnected = false;
         cancelPeriodicTasks();
-        authenticated = false;
+        markUnauthenticated();
         WebSocket ws = webSocket;
         webSocket = null;
         if (ws != null) {
@@ -91,7 +98,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
 
     private void onWebSocketError() {
         webSocket = null;
-        authenticated = false;
+        markUnauthenticated();
         cancelPeriodicTasks();
         if (wantConnected) {
             reconnectAttempts++;
@@ -136,7 +143,7 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
             if (lastPongMs > 0 && System.currentTimeMillis() - lastPongMs > 90_000L) {
                 GMMedic.LOGGER.warn("[ApiConnection] No PONG for 90s — reconnecting");
                 webSocket = null;
-                authenticated = false;
+                markUnauthenticated();
                 onWebSocketError();
             }
         }, 30, 30, TimeUnit.SECONDS);
@@ -173,7 +180,20 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
     // --- Package-visible for InboundDispatcher ---
 
     void setAuthenticated(boolean auth) {
-        this.authenticated = auth;
+        if (auth) {
+            everAuthenticated = true;
+            authenticated = true;
+        } else {
+            markUnauthenticated();
+        }
+    }
+
+    /** Records the moment an established authentication is lost, starting the grace window. */
+    private void markUnauthenticated() {
+        if (authenticated) {
+            lastAuthDropMs = System.currentTimeMillis();
+        }
+        authenticated = false;
     }
 
     void updateLastPong() {
@@ -188,9 +208,17 @@ public class ApiConnection implements EmergencyCallManager.CallEventListener {
      * gated build, nothing runs until the API server has actually verified this player
      * (AUTH_OK received). The unrestricted build ({@code -Prequire_verification=false})
      * skips this check entirely.
+     *
+     * <p>Once a session has verified at least once, a brief drop (up to {@link #AUTH_GRACE_MS})
+     * still counts as unlocked. Without this, a short connection hiccup would reset
+     * {@link de.dorikku.gmmedicmod.vehicle.VehicleAutomation}'s mount-tracking state and make it
+     * resend {@code /vehicles motor} as if the player had just re-entered the car, which stops an
+     * already-running motor. A session that has never verified gets no grace — duty join is still
+     * checked immediately.</p>
      */
     public boolean isFeatureUnlocked() {
-        return !BuildFlags.REQUIRE_SERVER_VERIFICATION || authenticated;
+        if (!BuildFlags.REQUIRE_SERVER_VERIFICATION || authenticated) return true;
+        return everAuthenticated && (System.currentTimeMillis() - lastAuthDropMs) <= AUTH_GRACE_MS;
     }
 
     // --- CallEventListener ---
