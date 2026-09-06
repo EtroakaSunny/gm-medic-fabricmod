@@ -29,6 +29,12 @@ public class MicroscopeConfig {
      * {@code true} — every entry is Minecraft's own dye icon for that colour instead.
      */
     private boolean iconLabels = false;
+    /**
+     * Whether clicking a dye in the microscope itself also ticks it off on the checklist. The
+     * click is only watched, never swallowed — it reaches the server exactly as it would
+     * without the mod.
+     */
+    private boolean clickToCheck = true;
     private boolean loaded = false;
 
     private MicroscopeConfig() {}
@@ -64,10 +70,12 @@ public class MicroscopeConfig {
                     compactMode = Boolean.parseBoolean(line.substring("compactMode=".length()).trim());
                 } else if (line.startsWith("iconLabels=")) {
                     iconLabels = Boolean.parseBoolean(line.substring("iconLabels=".length()).trim());
+                } else if (line.startsWith("clickToCheck=")) {
+                    clickToCheck = Boolean.parseBoolean(line.substring("clickToCheck=".length()).trim());
                 }
             }
-            GMMedic.LOGGER.info("[MicroscopeConfig] Loaded config: enabled={}, compactMode={}, iconLabels={}",
-                    enabled, compactMode, iconLabels);
+            GMMedic.LOGGER.info("[MicroscopeConfig] Loaded config: enabled={}, compactMode={}, iconLabels={}, clickToCheck={}",
+                    enabled, compactMode, iconLabels, clickToCheck);
         } catch (Exception e) {
             GMMedic.LOGGER.warn("[MicroscopeConfig] Failed to load config, using defaults", e);
         }
@@ -84,10 +92,13 @@ public class MicroscopeConfig {
                     "# normal one would not fit on screen, so this is only needed to pick it early\n" +
                     "compactMode=" + compactMode + "\n" +
                     "# false = colour names written in their own colour, true = Minecraft's dye icons\n" +
-                    "iconLabels=" + iconLabels + "\n";
+                    "iconLabels=" + iconLabels + "\n" +
+                    "# Clicking a dye in the microscope also ticks it off. The click still reaches the\n" +
+                    "# server untouched either way — it is only watched, never swallowed\n" +
+                    "clickToCheck=" + clickToCheck + "\n";
             Files.writeString(configPath, content);
-            GMMedic.LOGGER.info("[MicroscopeConfig] Saved config: enabled={}, compactMode={}, iconLabels={}",
-                    enabled, compactMode, iconLabels);
+            GMMedic.LOGGER.info("[MicroscopeConfig] Saved config: enabled={}, compactMode={}, iconLabels={}, clickToCheck={}",
+                    enabled, compactMode, iconLabels, clickToCheck);
         } catch (Exception e) {
             GMMedic.LOGGER.warn("[MicroscopeConfig] Failed to save config", e);
         }
@@ -117,6 +128,15 @@ public class MicroscopeConfig {
 
     public void setIconLabels(boolean value) {
         iconLabels = value;
+        save();
+    }
+
+    public boolean isClickToCheck() {
+        return clickToCheck;
+    }
+
+    public void setClickToCheck(boolean value) {
+        clickToCheck = value;
         save();
     }
 }

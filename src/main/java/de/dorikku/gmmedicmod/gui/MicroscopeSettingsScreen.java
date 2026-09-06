@@ -41,6 +41,13 @@ public class MicroscopeSettingsScreen extends AbstractGMMedicScreen {
                         .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Anzeige"),
                                 (btn, value) -> MicroscopeConfig.getInstance().setIconLabels(value))
         );
+        y += ROW_SPACING;
+
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isClickToCheck())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Klick im Mikroskop hakt ab"),
+                                (btn, value) -> MicroscopeConfig.getInstance().setClickToCheck(value))
+        );
         y += ROW_SPACING + 10;
 
         addBackButton(y);

@@ -103,8 +103,13 @@ public final class MicroscopeOverlay {
         ScreenEvents.afterTick(screen).register(s -> scanSamples(menuScreen, patient));
         ScreenEvents.afterExtract(screen).register(
                 (s, graphics, mouseX, mouseY, tickProgress) -> render(menuScreen, patient, graphics, mouseX, mouseY));
-        ScreenMouseEvents.allowMouseClick(screen).register(
-                (s, event) -> !handleClick(menuScreen, patient, event));
+        ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
+            if (handleClick(menuScreen, patient, event)) return false;
+            // Not the panel's click, so it belongs to the menu: tick the sample it landed on and
+            // let it through untouched.
+            checkClickedSample(menuScreen, patient, event);
+            return true;
+        });
     }
 
     /**
@@ -469,6 +474,41 @@ public final class MicroscopeOverlay {
         }
         // Still swallowed: the click landed on the panel's frame, not on the menu behind it.
         return true;
+    }
+
+    /**
+     * Ticks the dye a medic just clicked in the microscope itself, so the checklist can be
+     * filled straight off the slide instead of matching entries by eye.
+     *
+     * <p>Purely an observer: the click is never consumed, so it reaches the server exactly as it
+     * would without the mod — whatever the menu does with a click on a sample keeps doing it.
+     * Clicking only ever ticks, never un-ticks, because the same dye shows up on several pages
+     * and a second click on it must not undo the first.</p>
+     */
+    private static void checkClickedSample(AbstractContainerScreen<?> screen, String patient, MouseButtonEvent event) {
+        if (!isActive() || !MicroscopeConfig.getInstance().isClickToCheck() || event.button() != 0) return;
+        Slot slot = sampleSlotAt(screen, (int) event.x(), (int) event.y());
+        if (slot == null) return;
+        DyeColor color = MicroscopeColors.colorOf(slot.getItem());
+        if (color != null) {
+            MicroscopeDiagnosisManager.getInstance().session(patient).check(color);
+        }
+    }
+
+    /**
+     * The menu slot under the cursor, or {@code null}. Only the microscope's own slots count —
+     * the medic's inventory below it is not part of the sample.
+     */
+    private static Slot sampleSlotAt(AbstractContainerScreen<?> screen, int mouseX, int mouseY) {
+        ContainerScreenAccessor bounds = (ContainerScreenAccessor) screen;
+        int left = bounds.gmmedic$getLeftPos();
+        int top = bounds.gmmedic$getTopPos();
+        for (Slot slot : screen.getMenu().slots) {
+            if (slot.container instanceof Inventory || !slot.isActive()) continue;
+            // Vanilla's own slot hit box: the 16x16 icon plus a pixel of slack on every side.
+            if (isInside(mouseX, mouseY, left + slot.x - 1, top + slot.y - 1, 18, 18)) return slot;
+        }
+        return null;
     }
 
     private static boolean isOverReset(Panel panel, Font font, int mouseX, int mouseY) {
