@@ -46,6 +46,14 @@ public final class MicroscopeSession {
         }
     }
 
+    /**
+     * Ticks a colour without ever un-ticking it. Used by the click-the-sample shortcut, where
+     * clicking the same dye on a second page must not undo the tick the first one made.
+     */
+    public void check(DyeColor color) {
+        checked.add(color);
+    }
+
     public int checkedCount() {
         return checked.size();
     }

@@ -56,6 +56,11 @@ you can focus on the response.
     medics play at. The compact one is also picked automatically whenever the list would not
     fit beside the menu.
   - **Labels** — either the dye's name written in that colour, or Minecraft's own dye icon.
+  - **Click to tick** (on by default) — clicking a dye in the microscope itself also ticks it off
+    on the checklist, so you can work straight off the slide instead of matching entries by eye.
+    The click is only watched, never swallowed: it reaches the server exactly as it would without
+    the mod. Clicking only ever ticks — the same dye appears on several pages, so a second click
+    must not undo the first — and un-ticking stays a click on the panel.
   - Entirely local: the checklist is never synced to the API server, and the server side needs
     to know nothing about it.
 - **Revive auto-reply** — optionally sends an automatic public chat reply right after
@@ -87,9 +92,9 @@ management — now lives in an in-game menu instead:
   default).
 - The menu has four tabs (HUD, vehicle automation, microscope diagnosis, API) plus the revive
   auto-reply toggle described below.
-- **Mikroskop-Diagnose** holds the three checklist settings: whether it is shown at all, the
-  compact layout, and whether entries are colour names or dye icons. All three are local
-  display choices.
+- **Mikroskop-Diagnose** holds the checklist settings: whether it is shown at all, the compact
+  layout, whether entries are colour names or dye icons, and whether clicking a dye in the
+  microscope ticks it off. All of them are local — nothing here is synced.
 
 Only the API server URL stays a command, since it's the one setting you'd want to change
 without leaving the game (e.g. switching servers mid-session):
