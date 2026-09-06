@@ -8,8 +8,8 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Hub screen for every GM-Medic setting that used to be a chat command (HUD, vehicle
- * automation, API management) plus the revive auto-reply toggle. Only {@code /gmapi url}
- * stays a command — everything else lives here now.
+ * automation, API management), plus the microscope checklist and the revive auto-reply
+ * toggle. Only {@code /gmapi url} stays a command — everything else lives here now.
  */
 public class GMMedicMenuScreen extends AbstractGMMedicScreen {
 
@@ -31,6 +31,13 @@ public class GMMedicMenuScreen extends AbstractGMMedicScreen {
 
         this.addRenderableWidget(
                 Button.builder(Component.literal("🚗 Fahrzeug-Automatik"), b -> this.minecraft.gui.setScreen(new VehicleSettingsScreen(this)))
+                        .bounds(x, y, BUTTON_WIDTH, BUTTON_HEIGHT)
+                        .build()
+        );
+        y += ROW_SPACING;
+
+        this.addRenderableWidget(
+                Button.builder(Component.literal("🔬 Mikroskop-Diagnose"), b -> this.minecraft.gui.setScreen(new MicroscopeSettingsScreen(this)))
                         .bounds(x, y, BUTTON_WIDTH, BUTTON_HEIGHT)
                         .build()
         );

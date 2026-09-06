@@ -6,7 +6,10 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import de.dorikku.gmmedicmod.blood.BloodChatNoteHandler;
 import de.dorikku.gmmedicmod.blood.BloodDrawAssistant;
 import de.dorikku.gmmedicmod.command.DebugCommands;
+import de.dorikku.gmmedicmod.config.MicroscopeConfig;
 import de.dorikku.gmmedicmod.config.VehicleConfig;
+import de.dorikku.gmmedicmod.diagnosis.MicroscopeDiagnosisManager;
+import de.dorikku.gmmedicmod.diagnosis.MicroscopeOverlay;
 import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
 import de.dorikku.gmmedicmod.handler.CallArrivalCountdown;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
@@ -58,11 +61,13 @@ public class GMMedicClient implements ClientModInitializer {
         EmergencyCallManager.getInstance().setEventListener(ApiConnection.getInstance());
         ApiConfig.getInstance(); // pre-load config on startup
         VehicleConfig.getInstance(); // pre-load vehicle automation config
+        MicroscopeConfig.getInstance(); // pre-load microscope checklist config
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodChatNoteHandler::tick);
         ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(client -> MicroscopeDiagnosisManager.getInstance().tick());
         ClientTickEvents.END_CLIENT_TICK.register(UpdateNotifier::tick);
 
         // Keybind opens the settings menu directly; only fires outside of another open screen,
@@ -76,6 +81,8 @@ public class GMMedicClient implements ClientModInitializer {
         });
 
         ClientReceiveMessageEvents.GAME.register(ChatMessageHandler::onGameMessage);
+
+        MicroscopeOverlay.register();
 
         HudElementRegistry.addLast(
                 Identifier.fromNamespaceAndPath(GMMedic.MOD_ID, "emergency_calls_hud"),
@@ -109,6 +116,7 @@ public class GMMedicClient implements ClientModInitializer {
             AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
             BloodChatNoteHandler.clear();
+            MicroscopeDiagnosisManager.getInstance().clear();
             UpdateNotifier.onDisconnect();
             ApiConnection.getInstance().disconnect();
             GMMedic.LOGGER.info("[GM-Medic] Disconnected — duty reset, API connection closed");

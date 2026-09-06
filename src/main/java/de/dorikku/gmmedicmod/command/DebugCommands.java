@@ -2,15 +2,24 @@ package de.dorikku.gmmedicmod.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import de.dorikku.gmmedicmod.diagnosis.MicroscopeColors;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.multiplayer.chat.ChatListener;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.item.DyeColor;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Debug commands for testing the emergency call system without being on a real server.
@@ -355,6 +364,14 @@ public class DebugCommands {
                         })
                 )
 
+                // /gm mikroskop [name] — opens a stand-in for the server's microscope menu
+                .then(ClientCommands.literal("mikroskop")
+                        .then(ClientCommands.argument("name", StringArgumentType.word())
+                                .executes(ctx -> simulateMicroscope(ctx.getSource(), StringArgumentType.getString(ctx, "name")))
+                        )
+                        .executes(ctx -> simulateMicroscope(ctx.getSource(), "TestPatient"))
+                )
+
                 // /gm help
                 .then(ClientCommands.literal("help")
                         .executes(ctx -> {
@@ -378,6 +395,7 @@ public class DebugCommands {
                             ctx.getSource().sendFeedback(Component.literal("\u00a7e/gm simulate \u00a77- 3 Testnotrufe direkt erstellen"));
                             ctx.getSource().sendFeedback(Component.literal("\u00a7e/gm clear \u00a77- Alles zur\u00fccksetzen"));
                             ctx.getSource().sendFeedback(Component.literal("\u00a7e/gm status \u00a77- Status anzeigen"));
+                            ctx.getSource().sendFeedback(Component.literal("\u00a7e/gm mikroskop [name] \u00a77- Mikroskop-Men\u00fc mit Zufallsprobe \u00f6ffnen"));
                             return 1;
                         })
                 )
@@ -456,6 +474,47 @@ public class DebugCommands {
         return 1;
     }
 
+    /**
+     * Opens a stand-in for the server's microscope menu — a chest titled
+     * {@code Mikroskop | <name>}, filled with a random sample that leaves out zero to two
+     * colours — so the checklist overlay and its hints can be tried without a server. The menu
+     * is client-only, so its slots are only there to be looked at.
+     */
+    private static int simulateMicroscope(FabricClientCommandSource src, String patient) {
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client.player;
+        if (player == null) return 0;
+
+        List<DyeColor> colors = new ArrayList<>(MicroscopeColors.ORDER);
+        Collections.shuffle(colors, RANDOM);
+        // Sometimes nothing is missing at all, which is the case that must stay hint-free.
+        int missing = RANDOM.nextInt(3);
+        List<DyeColor> sample = colors.subList(missing, colors.size());
+
+        SimpleContainer container = new SimpleContainer(CHEST_SLOTS);
+        List<Integer> slots = new ArrayList<>(CHEST_SLOTS);
+        for (int slot = 0; slot < CHEST_SLOTS; slot++) slots.add(slot);
+        Collections.shuffle(slots, RANDOM);
+        for (int i = 0; i < sample.size(); i++) {
+            container.setItem(slots.get(i), MicroscopeColors.iconOf(sample.get(i)).copy());
+        }
+
+        ChestMenu menu = ChestMenu.sixRows(FAKE_CONTAINER_ID, player.getInventory(), container);
+        client.gui.setScreen(new ContainerScreen(menu, player.getInventory(),
+                Component.literal("Mikroskop | " + patient)));
+        src.sendFeedback(Component.literal(
+                "\u00a77Mikroskop-Attrappe f\u00fcr \u00a7f" + patient + " \u00a77- es fehlen \u00a7f" + missing + " \u00a77Farben."));
+        return 1;
+    }
+
+    private static final int CHEST_SLOTS = 54;
+    /** Not a real window, so it must not collide with a container the server has opened. */
+    private static final int FAKE_CONTAINER_ID = -1;
+    private static final Random RANDOM = new Random();
+
+    /**
+     * Simulates a server system message by feeding it through the real MessageHandler.
+     */
     private static void simulateChatMessage(String rawMessage) {
         Component text = Component.literal(rawMessage);
         Minecraft client = Minecraft.getInstance();
