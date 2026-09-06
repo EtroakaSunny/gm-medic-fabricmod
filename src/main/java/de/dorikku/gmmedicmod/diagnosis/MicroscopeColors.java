@@ -19,9 +19,10 @@ import java.util.Map;
  * "the medic has the wrong answer".</p>
  *
  * <p>Order, wording and illnesses follow the Leitfaden line for line, so the panel reads the
- * same way as the guide a medic already knows. Minecraft's other three dyes (magenta, grey and
- * light grey) are not on the guide and never diagnose anything, so they are left out of the
- * checklist entirely — see {@link #colorOf(ItemStack)}.</p>
+ * same way as the guide a medic already knows. The guide's "Pinker Farbstoff" is Minecraft's
+ * {@code pink_dye}; its other three dyes (magenta, grey and light grey) are not on the guide and
+ * never diagnose anything, so they are left out of the checklist entirely — see
+ * {@link #colorOf(ItemStack)}.</p>
  */
 public final class MicroscopeColors {
 
@@ -125,9 +126,8 @@ public final class MicroscopeColors {
      *
      * <p>Vanilla dyes are matched by identity, so a server-renamed dye still counts; the display
      * name is only a fallback for a menu that shows its samples as something else. A dye that is
-     * not on the guide is not a sample either: grey and light grey are dropped, and magenta is
-     * folded into pink, because the guide's "Pinker Farbstoff" is one of those two and only one
-     * of them is ever on the slide.</p>
+     * not on the guide is not a sample either — magenta, grey and light grey diagnose nothing
+     * and are dropped.</p>
      */
     public static DyeColor colorOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return null;
@@ -145,9 +145,7 @@ public final class MicroscopeColors {
     }
 
     private static DyeColor diagnosable(DyeColor dye) {
-        if (dye == null) return null;
-        if (dye == DyeColor.MAGENTA) return DyeColor.PINK;
-        return NAMES.containsKey(dye) ? dye : null;
+        return dye != null && NAMES.containsKey(dye) ? dye : null;
     }
 
     /**
