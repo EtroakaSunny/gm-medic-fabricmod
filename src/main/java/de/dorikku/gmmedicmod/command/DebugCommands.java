@@ -476,20 +476,20 @@ public class DebugCommands {
 
     /**
      * Opens a stand-in for the server's microscope menu — a chest titled
-     * {@code Mikroskop | <name>}, filled with a random sample that leaves out zero to two
-     * colours — so the checklist overlay and its hints can be tried without a server. The menu
-     * is client-only, so its slots are only there to be looked at.
+     * {@code Mikroskop | <name>}, holding the Leitfaden's dyes with at most one left out, the
+     * way a real slide works — so the checklist overlay and its hints can be tried without a
+     * server. The whole sample fits on one page here; the real menu is paged. The menu is
+     * client-only, so its slots are only there to be looked at.
      */
     private static int simulateMicroscope(FabricClientCommandSource src, String patient) {
         Minecraft client = Minecraft.getInstance();
         LocalPlayer player = client.player;
         if (player == null) return 0;
 
-        List<DyeColor> colors = new ArrayList<>(MicroscopeColors.ORDER);
-        Collections.shuffle(colors, RANDOM);
-        // Sometimes nothing is missing at all, which is the case that must stay hint-free.
-        int missing = RANDOM.nextInt(3);
-        List<DyeColor> sample = colors.subList(missing, colors.size());
+        List<DyeColor> sample = new ArrayList<>(MicroscopeColors.ORDER);
+        // Every other slide is clean, which is the case that must stay hint-free.
+        DyeColor absent = RANDOM.nextBoolean() ? sample.remove(RANDOM.nextInt(sample.size())) : null;
+        Collections.shuffle(sample, RANDOM);
 
         SimpleContainer container = new SimpleContainer(CHEST_SLOTS);
         List<Integer> slots = new ArrayList<>(CHEST_SLOTS);
@@ -502,8 +502,10 @@ public class DebugCommands {
         ChestMenu menu = ChestMenu.sixRows(FAKE_CONTAINER_ID, player.getInventory(), container);
         client.gui.setScreen(new ContainerScreen(menu, player.getInventory(),
                 Component.literal("Mikroskop | " + patient)));
-        src.sendFeedback(Component.literal(
-                "\u00a77Mikroskop-Attrappe f\u00fcr \u00a7f" + patient + " \u00a77- es fehlen \u00a7f" + missing + " \u00a77Farben."));
+        src.sendFeedback(Component.literal(absent == null
+                ? "\u00a77Mikroskop-Attrappe f\u00fcr \u00a7f" + patient + "\u00a77 - kein Befund."
+                : "\u00a77Mikroskop-Attrappe f\u00fcr \u00a7f" + patient + "\u00a77 - es fehlt \u00a7f"
+                        + MicroscopeColors.nameOf(absent) + "\u00a77 (" + MicroscopeColors.illnessOf(absent) + ")."));
         return 1;
     }
 
