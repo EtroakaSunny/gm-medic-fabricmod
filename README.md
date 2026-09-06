@@ -35,6 +35,22 @@ you can focus on the response.
 
   Each feature can be toggled, and set to run **always** (even off duty), from the
   settings menu (`/gmmenu`).
+- **Microscope diagnosis checklist** — while the server's `Mikroskop | <patient>` menu is
+  open, a panel next to it lists all 16 Minecraft dye colours with a checkbox each, so you can
+  tick off what you saw. The ticks are kept **per patient** and survive paging through the menu
+  (which closes and reopens it), for up to **5 minutes** from the start of that run — long
+  enough for one diagnosis, short enough that a re-taken sample never inherits old notes. They
+  are also dropped when you go off duty or leave the server.
+  - **Hints** — if a diagnosis takes longer than **60 seconds** and your ticks don't match the
+    sample, the panel starts nudging you and gets one step more specific every 30 s: something
+    is off → how much → roughly which colour range → the colour by name. It never ticks a box
+    for you, and when nothing is wrong it stays quiet.
+  - **Layouts** — a full-height list, or a **compact** grid for the very large GUI scales some
+    medics play at. The compact one is also picked automatically whenever the list would not
+    fit beside the menu.
+  - **Labels** — either the colour's name written in that colour, or Minecraft's own dye icon.
+  - Entirely local: the checklist is never synced to the API server, and the server side needs
+    to know nothing about it.
 - **Revive auto-reply** — optionally sends an automatic public chat reply right after
   *your own* "Ich habe X wiederbelebt!" message — only for the medic who actually did
   the reviving, never for other on-duty medics who just see the broadcast. Toggle and
@@ -62,8 +78,11 @@ management — now lives in an in-game menu instead:
 
 - Open it with **`/gmmenu`**, or bind a key to it in **Controls → GM Medic** (unbound by
   default).
-- The menu has three tabs (HUD, vehicle automation, API) plus the revive auto-reply toggle
-  described below.
+- The menu has four tabs (HUD, vehicle automation, microscope diagnosis, API) plus the revive
+  auto-reply toggle described below.
+- **Mikroskop-Diagnose** holds the three checklist settings: whether it is shown at all, the
+  compact layout, and whether entries are colour names or dye icons. All three are local
+  display choices.
 
 Only the API server URL stays a command, since it's the one setting you'd want to change
 without leaving the game (e.g. switching servers mid-session):
@@ -111,4 +130,5 @@ name.
 | `/gm testfunk` | Simulate a sequence of `[FUNK]` messages. |
 | `/gm testfull` | Full GermanMiner simulation (`[FUNK]` format). |
 | `/gm testrealformat` | Full simulation using the real GermanMiner radio format. |
+| `/gm mikroskop [name]` | Open a stand-in `Mikroskop \| <name>` menu holding a random sample (0–2 colours missing), to try the checklist and its hints offline. |
 | `/gm help` | List all debug commands in chat. |
