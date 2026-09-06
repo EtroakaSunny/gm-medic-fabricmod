@@ -66,6 +66,8 @@ public final class MicroscopeOverlay {
     private static final int HINT_MAX_WIDTH = 150;
     /** Room kept free for a hint when deciding between the two layouts. */
     private static final int HINT_RESERVE_LINES = 3;
+    /** Label plus illness — always both, so ticking a box never reflows the panel. */
+    private static final int CONCLUSION_LINES = 2;
     private static final String RESET_LABEL = "[ Neu starten ]";
     private static final String RESET_LABEL_COMPACT = "[ Neu ]";
 
@@ -82,6 +84,7 @@ public final class MicroscopeOverlay {
     private static final int COLOR_MUTED = 0xFFA0A0AA;
     private static final int COLOR_EXPIRING = 0xFFFF5555;
     private static final int COLOR_ACTION = 0xFFC8C8D2;
+    private static final int COLOR_NO_FINDING = 0xFF55FF55;
 
     private MicroscopeOverlay() {}
 
@@ -175,8 +178,29 @@ public final class MicroscopeOverlay {
 
     /** A fully measured panel — the single source of truth for both drawing and hit-testing. */
     private record Panel(Layout layout, int x, int y, int width, int height,
-                         int gridX, int gridY, int resetY,
+                         int gridX, int gridY, int columnStride,
+                         int conclusionY, int hintY, int resetY,
                          List<FormattedCharSequence> hintLines, int hintColor) {}
+
+    /**
+     * What the medic's own ticks currently say — restated, never decided for them. With one box
+     * left open that is a diagnosis; with none it is a clean slide; with more it is just how far
+     * they have got.
+     */
+    private record Conclusion(String label, String detail, int color) {}
+
+    private static Conclusion conclusionOf(MicroscopeSession session) {
+        List<DyeColor> open = MicroscopeHints.missing(session.getChecked());
+        if (open.isEmpty()) {
+            return new Conclusion("Kein Befund", "alle Farbstoffe da", COLOR_NO_FINDING);
+        }
+        if (open.size() == 1) {
+            DyeColor color = open.getFirst();
+            return new Conclusion("Verdacht:", MicroscopeColors.illnessOf(color),
+                    MicroscopeColors.textColorOf(color));
+        }
+        return new Conclusion("Noch " + open.size() + " offen", "", COLOR_MUTED);
+    }
 
     private static Layout layoutFor(Font font, boolean compact) {
         if (compact) {
@@ -184,12 +208,19 @@ public final class MicroscopeOverlay {
                     // No checkbox fits beside a 16px icon at this size; the cell frame carries
                     // the tick state instead, which is why the cell is a pixel wider than the
                     // icon on each side — the frame would clip it otherwise.
-                    ? new Layout(4, 4, ICON_SIZE + 2, ICON_SIZE + 2, true, true, false, false)
-                    : new Layout(2, 8, BOX_SIZE + BOX_GAP + widestShortName(font), 11, true, false, true, true);
+                    ? layout(4, ICON_SIZE + 2, ICON_SIZE + 2, true, true, false, false)
+                    : layout(2, BOX_SIZE + BOX_GAP + widestShortName(font), 11, true, false, true, true);
         }
         return MicroscopeConfig.getInstance().isIconLabels()
-                ? new Layout(2, 8, BOX_SIZE + BOX_GAP + ICON_SIZE, ICON_SIZE + 2, false, true, false, true)
-                : new Layout(1, 16, BOX_SIZE + BOX_GAP + widestName(font), 12, false, false, false, true);
+                ? layout(2, BOX_SIZE + BOX_GAP + ICON_SIZE, ICON_SIZE + 2, false, true, false, true)
+                : layout(1, BOX_SIZE + BOX_GAP + widestName(font), 12, false, false, false, true);
+    }
+
+    /** Fills the requested number of columns top-to-bottom; the last one may be short. */
+    private static Layout layout(int columns, int cellWidth, int cellHeight,
+                                 boolean compact, boolean icons, boolean shortNames, boolean checkbox) {
+        int rows = (MicroscopeColors.ORDER.size() + columns - 1) / columns;
+        return new Layout(columns, rows, cellWidth, cellHeight, compact, icons, shortNames, checkbox);
     }
 
     private static int widestName(Font font) {
@@ -223,7 +254,7 @@ public final class MicroscopeOverlay {
         boolean compact = MicroscopeConfig.getInstance().isCompactMode();
         if (!compact) {
             Panel probe = build(screen, patient, session, font, false);
-            int reserved = probe.hintLines().isEmpty() ? 4 + HINT_RESERVE_LINES * LINE_HEIGHT : 0;
+            int reserved = probe.hintLines().isEmpty() ? HINT_RESERVE_LINES * LINE_HEIGHT : 0;
             if (probe.height() + reserved > screen.height || probe.width() > screen.width) {
                 compact = true;
             }
@@ -236,22 +267,32 @@ public final class MicroscopeOverlay {
         Layout layout = layoutFor(font, compact);
         MicroscopeHints.Hint hint = MicroscopeHints.forSession(session);
 
-        int contentWidth = Math.max(layout.gridWidth(),
-                Math.max(Math.min(font.width(patient), layout.headerMaxWidth()),
-                        Math.max(font.width(statusText(session)), font.width(layout.resetLabel()))));
+        // The hint width is a floor, not just a cap: holding the panel at that width whether or
+        // not a hint is up means the checkboxes never move sideways under the medic's cursor,
+        // and leaves room for the longest illness name on the conclusion row.
+        int contentWidth = Math.max(layout.hintMinWidth(),
+                Math.max(layout.gridWidth(),
+                        Math.max(Math.min(font.width(patient), layout.headerMaxWidth()),
+                                Math.max(font.width(statusText(session)), font.width(layout.resetLabel())))));
 
-        List<FormattedCharSequence> hintLines = List.of();
-        if (hint != null) {
-            int wrapWidth = Math.max(layout.hintMinWidth(), Math.min(HINT_MAX_WIDTH, contentWidth));
-            hintLines = font.split(Component.literal(hint.text()), wrapWidth);
-            contentWidth = Math.max(contentWidth, wrapWidth);
-        }
+        List<FormattedCharSequence> hintLines = hint == null
+                ? List.of()
+                : font.split(Component.literal(hint.text()), Math.min(HINT_MAX_WIDTH, contentWidth));
+
+        // The panel is wider than the grid needs, because the conclusion row has to fit an
+        // illness name. Spread the columns over that width instead of leaving a gap at the
+        // right; a single-column layout is a list and stays left-aligned.
+        int columnStride = layout.columns() > 1
+                ? Math.max(layout.cellWidth() + CELL_GAP,
+                           (contentWidth - layout.cellWidth()) / (layout.columns() - 1))
+                : 0;
 
         int width = contentWidth + PADDING * 2;
         int gridY = PADDING + LINE_HEIGHT * 2 + 4;
-        int belowGrid = gridY + layout.gridHeight();
-        int hintHeight = hintLines.isEmpty() ? 0 : 4 + hintLines.size() * LINE_HEIGHT;
-        int resetY = belowGrid + hintHeight + 4;
+        int conclusionY = gridY + layout.gridHeight() + 4;
+        int hintY = conclusionY + CONCLUSION_LINES * LINE_HEIGHT + 4;
+        int hintHeight = hintLines.isEmpty() ? 0 : hintLines.size() * LINE_HEIGHT;
+        int resetY = hintY + hintHeight + 4;
         int height = resetY + LINE_HEIGHT + PADDING - 2;
 
         ContainerScreenAccessor bounds = (ContainerScreenAccessor) screen;
@@ -266,7 +307,8 @@ public final class MicroscopeOverlay {
         x = clamp(x, 0, Math.max(0, screen.width - width));
         int y = clamp(menuTop, 0, Math.max(0, screen.height - height));
 
-        return new Panel(layout, x, y, width, height, x + PADDING, y + gridY, y + resetY,
+        return new Panel(layout, x, y, width, height, x + PADDING, y + gridY, columnStride,
+                y + conclusionY, y + hintY, y + resetY,
                 hintLines, hint != null ? hint.color() : 0);
     }
 
@@ -276,7 +318,7 @@ public final class MicroscopeOverlay {
 
     /** Top-left corner of the entry at {@code index}, filled column by column. */
     private static int cellX(Panel panel, int index) {
-        return panel.gridX() + index / panel.layout().rows() * (panel.layout().cellWidth() + CELL_GAP);
+        return panel.gridX() + index / panel.layout().rows() * panel.columnStride();
     }
 
     private static int cellY(Panel panel, int index) {
@@ -305,7 +347,14 @@ public final class MicroscopeOverlay {
 
         renderEntries(graphics, font, panel, session, mouseX, mouseY);
 
-        int y = panel.gridY() + panel.layout().gridHeight() + 4;
+        Conclusion conclusion = conclusionOf(session);
+        graphics.text(font, conclusion.label(), textX, panel.conclusionY(), conclusion.color());
+        if (!conclusion.detail().isEmpty()) {
+            graphics.text(font, trimToWidth(font, conclusion.detail(), panel.width() - PADDING * 2),
+                    textX, panel.conclusionY() + LINE_HEIGHT, conclusion.color());
+        }
+
+        int y = panel.hintY();
         for (FormattedCharSequence line : panel.hintLines()) {
             graphics.text(font, line, textX, y, panel.hintColor());
             y += LINE_HEIGHT;

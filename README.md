@@ -36,19 +36,26 @@ you can focus on the response.
   Each feature can be toggled, and set to run **always** (even off duty), from the
   settings menu (`/gmmenu`).
 - **Microscope diagnosis checklist** — while the server's `Mikroskop | <patient>` menu is
-  open, a panel next to it lists all 16 Minecraft dye colours with a checkbox each, so you can
-  tick off what you saw. The ticks are kept **per patient** and survive paging through the menu
-  (which closes and reopens it), for up to **5 minutes** from the start of that run — long
-  enough for one diagnosis, short enough that a re-taken sample never inherits old notes. They
-  are also dropped when you go off duty or leave the server.
-  - **Hints** — if a diagnosis takes longer than **60 seconds** and your ticks don't match the
-    sample, the panel starts nudging you and gets one step more specific every 30 s: something
-    is off → how much → roughly which colour range → the colour by name. It never ticks a box
-    for you, and when nothing is wrong it stays quiet.
+  open, a panel next to it lists the 13 dyes from the Diagnostik-Leitfaden with a checkbox
+  each, so you can tick off what you saw. A slide carries every one of them except at most
+  one, and that missing dye is the diagnosis (no red = Influenza, no light blue = Corona, …),
+  so the row under the list reads your own ticks back: **Noch N offen** while you work,
+  **Verdacht: Corona** once exactly one box is left, **Kein Befund** when all 13 are ticked.
+  Nothing is ever ticked for you.
+  - **Kept per patient** and surviving paging through the menu (which closes and reopens it),
+    for up to **5 minutes** from the start of that run — long enough for one diagnosis, short
+    enough that a re-taken sample never inherits old notes. Also dropped when you go off duty
+    or leave the server.
+  - **Hints** — if a run takes longer than **60 seconds** and your ticks don't match the slide,
+    the panel starts nudging you and gets one step more specific every 30 s: something is off →
+    how far off → roughly which colour range → the dye and its illness. When your ticks already
+    match, it stays quiet — a clean slide with everything ticked says nothing at all. Because
+    only one dye can ever be missing, more than one unaccounted for means you haven't been
+    through every page yet, and the hint says exactly that instead of guessing.
   - **Layouts** — a full-height list, or a **compact** grid for the very large GUI scales some
     medics play at. The compact one is also picked automatically whenever the list would not
     fit beside the menu.
-  - **Labels** — either the colour's name written in that colour, or Minecraft's own dye icon.
+  - **Labels** — either the dye's name written in that colour, or Minecraft's own dye icon.
   - Entirely local: the checklist is never synced to the API server, and the server side needs
     to know nothing about it.
 - **Revive auto-reply** — optionally sends an automatic public chat reply right after
@@ -130,5 +137,5 @@ name.
 | `/gm testfunk` | Simulate a sequence of `[FUNK]` messages. |
 | `/gm testfull` | Full GermanMiner simulation (`[FUNK]` format). |
 | `/gm testrealformat` | Full simulation using the real GermanMiner radio format. |
-| `/gm mikroskop [name]` | Open a stand-in `Mikroskop \| <name>` menu holding a random sample (0–2 colours missing), to try the checklist and its hints offline. |
+| `/gm mikroskop [name]` | Open a stand-in `Mikroskop \| <name>` menu holding a random slide (half the time one dye missing, half the time none), to try the checklist and its hints offline. |
 | `/gm help` | List all debug commands in chat. |

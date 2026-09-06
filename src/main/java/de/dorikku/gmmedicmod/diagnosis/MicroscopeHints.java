@@ -3,26 +3,25 @@ package de.dorikku.gmmedicmod.diagnosis;
 import net.minecraft.world.item.DyeColor;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * The nudge a medic gets once a diagnosis has been dragging on, worked out by comparing the
- * ticks on the checklist against the colours the mod has actually read out of the menu.
+ * The nudge a medic gets once a diagnosis has been dragging on.
+ *
+ * <p>The slide carries every dye on the Leitfaden except at most one, and that one names the
+ * illness. So the mod compares two things: which dyes it has actually read out of the menu, and
+ * which ones the medic has left unticked. When those agree the medic has it right and nothing
+ * is said — including the case where nothing is missing at all and every box is ticked.</p>
+ *
+ * <p>Because at most one dye can be absent, the mod can tell whether it has seen the whole
+ * slide: two or more dyes unaccounted for means pages are still unopened, and the honest hint
+ * there is to say so rather than to invent a diagnosis from half a sample.</p>
  *
  * <p>Hints start after {@value #FIRST_HINT_MS} ms and get one step more specific every
- * {@value #HINT_STEP_MS} ms: something is off → how much is off → roughly where → which
- * colour exactly. The last stage names the colours but still does not tick them, so the
- * medic always makes the call.</p>
- *
- * <p>When the ticks already match what the mod has seen there is nothing wrong and no hint is
- * shown at all — a sample where nothing is missing simply stays quiet.</p>
- *
- * <p>The mod only knows the pages the medic has actually opened, which is exactly the ground
- * the medic could have ticked from, so an unopened page can never produce a "you missed one".
- * A colour ticked ahead of opening the page it sits on does read as one too many until that
- * page is opened — by the time hints start, a medic has normally been through the menu.</p>
+ * {@value #HINT_STEP_MS} ms: something is off → how far off → roughly which colour range → the
+ * dye and its illness. Even the last stage only names it; the medic still ticks the box and
+ * makes the call.</p>
  */
 public final class MicroscopeHints {
 
@@ -32,27 +31,32 @@ public final class MicroscopeHints {
     public static final long HINT_STEP_MS = 30_000L;
     private static final int MAX_STAGE = 4;
 
+    private static final int COLOR_INFO = 0xFFAAAAAA;
+
     /** @param text what to show on the panel, {@code color} an opaque ARGB value */
     public record Hint(int stage, String text, int color) {}
 
     private MicroscopeHints() {}
 
     /**
-     * The hint for a run right now, or {@code null} while it is too early, the checklist
-     * matches the sample, or the mod has not read a single colour yet.
+     * The hint for a run right now, or {@code null} while it is still too early or the
+     * checklist already matches the slide.
      */
     public static Hint forSession(MicroscopeSession session) {
         int stage = stageFor(session);
         if (stage <= 0) return null;
 
-        Set<DyeColor> observed = session.getObserved();
-        if (observed.isEmpty()) return null;
+        List<DyeColor> absent = missing(session.getObserved());
+        if (absent.size() > 1) {
+            // More than one dye unaccounted for is impossible on a whole slide, so the medic
+            // has not been through every page — and neither has the mod.
+            return new Hint(stage, "Du hast noch nicht das ganze Präparat gesehen.", COLOR_INFO);
+        }
 
-        List<DyeColor> missed = difference(observed, session.getChecked());
-        List<DyeColor> extra = difference(session.getChecked(), observed);
-        if (missed.isEmpty() && extra.isEmpty()) return null;
+        List<DyeColor> open = missing(session.getChecked());
+        if (open.equals(absent)) return null;
 
-        return new Hint(stage, textFor(stage, missed, extra), colorFor(stage));
+        return new Hint(stage, textFor(stage, absent, open), colorFor(stage));
     }
 
     /**
@@ -70,47 +74,41 @@ public final class MicroscopeHints {
         return session.getHintStage();
     }
 
-    private static String textFor(int stage, List<DyeColor> missed, List<DyeColor> extra) {
+    private static String textFor(int stage, List<DyeColor> absent, List<DyeColor> open) {
         return switch (stage) {
             case 1 -> "Da stimmt noch etwas nicht.";
-            case 2 -> counts(missed, extra);
-            case 3 -> family(missed, extra);
-            default -> exact(missed, extra);
+            case 2 -> howFarOff(absent, open);
+            case 3 -> family(absent, open);
+            default -> exact(absent);
         };
     }
 
-    private static String counts(List<DyeColor> missed, List<DyeColor> extra) {
-        List<String> parts = new ArrayList<>(2);
-        if (!missed.isEmpty()) {
-            parts.add(missed.size() == 1 ? "Dir fehlt noch 1 Farbe." : "Dir fehlen noch " + missed.size() + " Farben.");
+    /** Says how wrong the checklist is without saying which dye is involved. */
+    private static String howFarOff(List<DyeColor> absent, List<DyeColor> open) {
+        if (open.size() > 1) {
+            return "Es kann höchstens ein Farbstoff fehlen — du hast noch " + open.size() + " offen.";
         }
-        if (!extra.isEmpty()) {
-            parts.add(extra.size() == 1
-                    ? "1 Markierung passt nicht zum Präparat."
-                    : extra.size() + " Markierungen passen nicht zum Präparat.");
+        if (open.isEmpty()) {
+            return "Du hast alle markiert, aber ein Farbstoff fehlt auf dem Präparat.";
         }
-        return String.join(" ", parts);
+        return "Der Farbstoff, den du offen gelassen hast, ist auf dem Präparat.";
     }
 
-    /** Names the colour family of one offender — always a family of several, never a giveaway. */
-    private static String family(List<DyeColor> missed, List<DyeColor> extra) {
-        if (!missed.isEmpty()) {
-            return "Im Bereich " + MicroscopeColors.familyOf(missed.getFirst()) + " fehlt dir noch etwas.";
+    /** Names a colour family — always one of several dyes, never a giveaway on its own. */
+    private static String family(List<DyeColor> absent, List<DyeColor> open) {
+        if (!absent.isEmpty()) {
+            return "Der fehlende Farbstoff liegt im Bereich " + MicroscopeColors.familyOf(absent.getFirst()) + ".";
         }
-        return "Im Bereich " + MicroscopeColors.familyOf(extra.getFirst()) + " hast du zu viel markiert.";
+        // Nothing is missing, so the medic has wrongly left something open — point at that.
+        return "Sieh dir den Bereich " + MicroscopeColors.familyOf(open.getFirst()) + " noch einmal an.";
     }
 
-    private static String exact(List<DyeColor> missed, List<DyeColor> extra) {
-        List<String> parts = new ArrayList<>(2);
-        if (!missed.isEmpty()) parts.add("Es fehlt: " + names(missed));
-        if (!extra.isEmpty()) parts.add("Zu viel markiert: " + names(extra));
-        return String.join(" ", parts);
-    }
-
-    private static String names(List<DyeColor> colors) {
-        List<String> names = new ArrayList<>(colors.size());
-        for (DyeColor color : colors) names.add(MicroscopeColors.nameOf(color));
-        return String.join(", ", names);
+    private static String exact(List<DyeColor> absent) {
+        if (absent.isEmpty()) {
+            return "Es fehlt kein Farbstoff — kein Befund.";
+        }
+        DyeColor color = absent.getFirst();
+        return "Es fehlt: " + MicroscopeColors.nameOf(color) + " → " + MicroscopeColors.illnessOf(color);
     }
 
     private static int colorFor(int stage) {
@@ -121,13 +119,11 @@ public final class MicroscopeHints {
         };
     }
 
-    /** {@code a \ b}, in {@link MicroscopeColors#ORDER} so hints read in spectrum order. */
-    private static List<DyeColor> difference(Set<DyeColor> a, Set<DyeColor> b) {
-        EnumSet<DyeColor> rest = EnumSet.copyOf(a);
-        rest.removeAll(b);
-        List<DyeColor> result = new ArrayList<>(rest.size());
+    /** The Leitfaden's dyes that {@code present} does not hold, in guide order. */
+    static List<DyeColor> missing(Set<DyeColor> present) {
+        List<DyeColor> result = new ArrayList<>();
         for (DyeColor color : MicroscopeColors.ORDER) {
-            if (rest.contains(color)) result.add(color);
+            if (!present.contains(color)) result.add(color);
         }
         return result;
     }

@@ -5,103 +5,89 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The 16 Minecraft dye colours as the checklist presents them: display order, German names,
- * a two-letter short form for the compact layout, a readable text colour, the dye item used
- * as the icon, and the coarse colour family a stage-3 hint narrows down to.
+ * The dyes the server's Diagnostik-Leitfaden lists, and the illness each one stands for.
  *
- * <p>Also holds {@link #colorOf(ItemStack)}, which turns a slot's item back into the colour it
- * stands for. Only the 16 vanilla dyes and items literally named after a colour count — the
- * navigation buttons a paged menu puts in its bottom row (player heads, books) must never be
- * mistaken for a sample.</p>
+ * <p>The slide holds every one of these; the single dye that is <em>absent</em> is the
+ * diagnosis ("Influenza | Kein Roter Farbstoff"). At most one is ever missing, which is what
+ * lets {@link MicroscopeHints} tell "the medic has not paged through everything yet" apart from
+ * "the medic has the wrong answer".</p>
+ *
+ * <p>Order, wording and illnesses follow the Leitfaden line for line, so the panel reads the
+ * same way as the guide a medic already knows. Minecraft's other three dyes (magenta, grey and
+ * light grey) are not on the guide and never diagnose anything, so they are left out of the
+ * checklist entirely — see {@link #colorOf(ItemStack)}.</p>
  */
 public final class MicroscopeColors {
 
-    /**
-     * Display order: the spectrum first, neutrals last. Deliberately not
-     * {@link DyeColor#values()}, whose order is the historic wool-metadata one and reads as
-     * random on screen.
-     */
+    /** The 13 diagnosable dyes, in the Leitfaden's own order. */
     public static final List<DyeColor> ORDER = List.of(
-            DyeColor.RED, DyeColor.ORANGE, DyeColor.YELLOW, DyeColor.LIME,
-            DyeColor.GREEN, DyeColor.CYAN, DyeColor.LIGHT_BLUE, DyeColor.BLUE,
-            DyeColor.PURPLE, DyeColor.MAGENTA, DyeColor.PINK, DyeColor.BROWN,
-            DyeColor.WHITE, DyeColor.LIGHT_GRAY, DyeColor.GRAY, DyeColor.BLACK
+            DyeColor.RED, DyeColor.ORANGE, DyeColor.YELLOW, DyeColor.LIME, DyeColor.GREEN,
+            DyeColor.LIGHT_BLUE, DyeColor.BLUE, DyeColor.CYAN, DyeColor.PINK, DyeColor.PURPLE,
+            DyeColor.BROWN, DyeColor.BLACK, DyeColor.WHITE
     );
 
-    private static final Map<DyeColor, String> NAMES = Map.ofEntries(
-            Map.entry(DyeColor.WHITE, "Weiß"),
-            Map.entry(DyeColor.ORANGE, "Orange"),
-            Map.entry(DyeColor.MAGENTA, "Magenta"),
-            Map.entry(DyeColor.LIGHT_BLUE, "Hellblau"),
-            Map.entry(DyeColor.YELLOW, "Gelb"),
-            Map.entry(DyeColor.LIME, "Hellgrün"),
-            Map.entry(DyeColor.PINK, "Rosa"),
-            Map.entry(DyeColor.GRAY, "Grau"),
-            Map.entry(DyeColor.LIGHT_GRAY, "Hellgrau"),
-            Map.entry(DyeColor.CYAN, "Türkis"),
-            Map.entry(DyeColor.PURPLE, "Lila"),
-            Map.entry(DyeColor.BLUE, "Blau"),
-            Map.entry(DyeColor.BROWN, "Braun"),
-            Map.entry(DyeColor.GREEN, "Grün"),
-            Map.entry(DyeColor.RED, "Rot"),
-            Map.entry(DyeColor.BLACK, "Schwarz")
-    );
-
-    /** Two letters for the compact text layout; the entry is drawn in its own colour anyway. */
-    private static final Map<DyeColor, String> SHORT_NAMES = Map.ofEntries(
-            Map.entry(DyeColor.WHITE, "WS"),
-            Map.entry(DyeColor.ORANGE, "OR"),
-            Map.entry(DyeColor.MAGENTA, "MG"),
-            Map.entry(DyeColor.LIGHT_BLUE, "HB"),
-            Map.entry(DyeColor.YELLOW, "GE"),
-            Map.entry(DyeColor.LIME, "HN"),
-            Map.entry(DyeColor.PINK, "RS"),
-            Map.entry(DyeColor.GRAY, "GA"),
-            Map.entry(DyeColor.LIGHT_GRAY, "HA"),
-            Map.entry(DyeColor.CYAN, "TK"),
-            Map.entry(DyeColor.PURPLE, "LI"),
-            Map.entry(DyeColor.BLUE, "BL"),
-            Map.entry(DyeColor.BROWN, "BR"),
-            Map.entry(DyeColor.GREEN, "GN"),
-            Map.entry(DyeColor.RED, "RT"),
-            Map.entry(DyeColor.BLACK, "SW")
-    );
-
+    /** The Leitfaden's wording, not Minecraft's — "Violett" and "Pink", not "Lila" and "Rosa". */
+    private static final Map<DyeColor, String> NAMES = new EnumMap<>(DyeColor.class);
+    /** Two letters for the compact layout; the entry is drawn in its own colour anyway. */
+    private static final Map<DyeColor, String> SHORT_NAMES = new EnumMap<>(DyeColor.class);
+    /** The illness a missing dye diagnoses. */
+    private static final Map<DyeColor, String> ILLNESSES = new EnumMap<>(DyeColor.class);
     /**
-     * Colour families for the third hint stage. Every family holds at least two colours on
-     * purpose: naming a one-member family would be the same as naming the colour, which is
-     * what the last stage is for.
+     * Colour families for the third hint stage. Every family holds at least two dyes on
+     * purpose: naming a one-member family would be the same as naming the dye, which is what
+     * the last stage is for.
      */
-    private static final Map<DyeColor, String> FAMILIES = Map.ofEntries(
-            Map.entry(DyeColor.RED, "Rot/Braun"),
-            Map.entry(DyeColor.BROWN, "Rot/Braun"),
-            Map.entry(DyeColor.ORANGE, "Orange/Gelb"),
-            Map.entry(DyeColor.YELLOW, "Orange/Gelb"),
-            Map.entry(DyeColor.LIME, "Grün"),
-            Map.entry(DyeColor.GREEN, "Grün"),
-            Map.entry(DyeColor.CYAN, "Blau/Türkis"),
-            Map.entry(DyeColor.LIGHT_BLUE, "Blau/Türkis"),
-            Map.entry(DyeColor.BLUE, "Blau/Türkis"),
-            Map.entry(DyeColor.PURPLE, "Violett/Rosa"),
-            Map.entry(DyeColor.MAGENTA, "Violett/Rosa"),
-            Map.entry(DyeColor.PINK, "Violett/Rosa"),
-            Map.entry(DyeColor.WHITE, "Grautöne"),
-            Map.entry(DyeColor.LIGHT_GRAY, "Grautöne"),
-            Map.entry(DyeColor.GRAY, "Grautöne"),
-            Map.entry(DyeColor.BLACK, "Grautöne")
-    );
+    private static final Map<DyeColor, String> FAMILIES = new EnumMap<>(DyeColor.class);
+
+    private static void entry(DyeColor color, String name, String shortName, String illness, String family) {
+        NAMES.put(color, name);
+        SHORT_NAMES.put(color, shortName);
+        ILLNESSES.put(color, illness);
+        FAMILIES.put(color, family);
+    }
+
+    static {
+        entry(DyeColor.RED,        "Rot",      "RT", "Influenza",          "Rot/Braun");
+        entry(DyeColor.ORANGE,     "Orange",   "OR", "Erkältung",          "Orange/Gelb");
+        entry(DyeColor.YELLOW,     "Gelb",     "GE", "Reizhusten",         "Orange/Gelb");
+        entry(DyeColor.LIME,       "Hellgrün", "HN", "Allergie",           "Grün");
+        entry(DyeColor.GREEN,      "Grün",     "GN", "Grippe",             "Grün");
+        entry(DyeColor.LIGHT_BLUE, "Hellblau", "HB", "Corona",             "Blau/Türkis");
+        entry(DyeColor.BLUE,       "Blau",     "BL", "Norovirus",          "Blau/Türkis");
+        entry(DyeColor.CYAN,       "Türkis",   "TK", "Meningitis",         "Blau/Türkis");
+        entry(DyeColor.PINK,       "Pink",     "PK", "Eisenmangel",        "Pink/Violett");
+        entry(DyeColor.PURPLE,     "Violett",  "VI", "Wassermangel",       "Pink/Violett");
+        entry(DyeColor.BROWN,      "Braun",    "BR", "Untergewichtigkeit", "Rot/Braun");
+        entry(DyeColor.BLACK,      "Schwarz",  "SW", "Adipositas",         "Schwarz/Weiß");
+        entry(DyeColor.WHITE,      "Weiß",     "WS", "Diabetes",           "Schwarz/Weiß");
+    }
 
     private static final Map<DyeColor, ItemStack> ICONS = new EnumMap<>(DyeColor.class);
+    /** Every vanilla dye, so {@link #colorOf} recognises one before deciding it is diagnosable. */
+    private static final Map<Item, DyeColor> BY_ITEM = new java.util.IdentityHashMap<>();
+    /**
+     * German colour words longest first, so "Hellblauer Farbstoff" is not read as "Blau".
+     * Only used when an item is not one of the vanilla dyes.
+     */
+    private static final List<Map.Entry<String, DyeColor>> NAME_LOOKUP;
 
     static {
         for (DyeColor color : ORDER) {
             ICONS.put(color, new ItemStack(dyeItem(color)));
         }
+        for (DyeColor color : DyeColor.values()) {
+            BY_ITEM.put(dyeItem(color), color);
+        }
+        NAME_LOOKUP = NAMES.entrySet().stream()
+                .map(e -> Map.entry(e.getValue().toLowerCase(java.util.Locale.ROOT), e.getKey()))
+                .sorted(Comparator.comparingInt((Map.Entry<String, DyeColor> e) -> e.getKey().length()).reversed())
+                .toList();
     }
 
     private MicroscopeColors() {}
@@ -114,13 +100,18 @@ public final class MicroscopeColors {
         return SHORT_NAMES.get(color);
     }
 
+    /** The illness a missing dye stands for, per the Leitfaden. */
+    public static String illnessOf(DyeColor color) {
+        return ILLNESSES.get(color);
+    }
+
     public static String familyOf(DyeColor color) {
         return FAMILIES.get(color);
     }
 
     /**
      * Minecraft's own dye icon for the colour, used by the icon label style. The panel redraws
-     * all 16 of these every frame, so they are built once; copy one before handing it anywhere
+     * all of these every frame, so they are built once; copy one before handing it anywhere
      * that could change it.
      */
     public static ItemStack iconOf(DyeColor color) {
@@ -128,29 +119,35 @@ public final class MicroscopeColors {
     }
 
     /**
-     * Which colour an item in the microscope stands for, or {@code null} when it is not a
-     * sample at all.
+     * Which diagnosable dye an item in the microscope is, or {@code null} when it is not a
+     * sample at all — the navigation buttons a paged menu puts in its bottom row (player heads,
+     * books) must never be mistaken for one.
      *
-     * <p>One of the 16 vanilla dye items is the normal case; they are matched by identity so a
-     * server-renamed dye is still recognised. As a fallback the item's display name is accepted
-     * when it is exactly a colour's German or English name — a menu that shows its samples as
-     * something other than dyes still works, while a "Weiter"/"Zurück" navigation button never
-     * matches.</p>
+     * <p>Vanilla dyes are matched by identity, so a server-renamed dye still counts; the display
+     * name is only a fallback for a menu that shows its samples as something else. A dye that is
+     * not on the guide is not a sample either: grey and light grey are dropped, and magenta is
+     * folded into pink, because the guide's "Pinker Farbstoff" is one of those two and only one
+     * of them is ever on the slide.</p>
      */
     public static DyeColor colorOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return null;
-        Item item = stack.getItem();
-        for (DyeColor color : ORDER) {
-            if (dyeItem(color) == item) return color;
-        }
-        String name = stripColorCodes(stack.getHoverName().getString());
-        if (name.isEmpty()) return null;
-        for (DyeColor color : ORDER) {
-            if (name.equalsIgnoreCase(NAMES.get(color)) || name.equalsIgnoreCase(color.getName())) {
-                return color;
+        DyeColor dye = BY_ITEM.get(stack.getItem());
+        if (dye == null) {
+            String name = stripColorCodes(stack.getHoverName().getString()).toLowerCase(java.util.Locale.ROOT);
+            for (Map.Entry<String, DyeColor> candidate : NAME_LOOKUP) {
+                if (name.startsWith(candidate.getKey())) {
+                    dye = candidate.getValue();
+                    break;
+                }
             }
         }
-        return null;
+        return diagnosable(dye);
+    }
+
+    private static DyeColor diagnosable(DyeColor dye) {
+        if (dye == null) return null;
+        if (dye == DyeColor.MAGENTA) return DyeColor.PINK;
+        return NAMES.containsKey(dye) ? dye : null;
     }
 
     /**
