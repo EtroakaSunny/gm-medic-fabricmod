@@ -36,7 +36,12 @@ public class ChatMessageHandler {
     private static final Pattern CANCEL_DEATH_CALLER = Pattern.compile("Ich kann die Todesmeldung von (.+?)\\s+nicht mehr erledigen");
     private static final Pattern FUNK_SENDER_SIM     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(.+?)\\s*»");
     private static final Pattern FUNK_SENDER_ANY     = Pattern.compile("[\\])]\\s+(.+?)\\s*»");
-    private static final Pattern FUNK_SHIFT_JOIN     = Pattern.compile("\\[FUNK]\\s*\\([^)]*\\)\\s+(\\S+)\\s+Trete\\s+Meine\\s+Schicht\\s+an", Pattern.CASE_INSENSITIVE);
+    // Body of a medic's shift-join broadcast. Only the phrase — who sent it is read by
+    // extractFunkSender, which already knows that a funk line separates sender and body with a
+    // "»". Matching sender and phrase in one pattern missed every real message for exactly that
+    // reason: "[FUNK] (Sanitäter) Dorikku » Trete meine Schicht an" never has the name directly
+    // in front of the phrase.
+    private static final Pattern FUNK_SHIFT_JOIN     = Pattern.compile("Trete\\s+meine\\s+Schicht\\s+an", Pattern.CASE_INSENSITIVE);
     // Public chat line: "...<PlayerName> » <message>". The player name is the word right before the ».
     private static final Pattern CHAT_SENDER_BODY    = Pattern.compile("(\\w{1,16})\\s*»\\s*(.+)$");
     // Whole-word match so "low" does not fire on "below"/"yellow", "heal" not on "health" and
@@ -416,15 +421,11 @@ public class ChatMessageHandler {
 
         if (!isFunk) return null;
 
-        Matcher shiftJoin = FUNK_SHIFT_JOIN.matcher(msg);
-        if (shiftJoin.find()) {
-            String sender = shiftJoin.group(1).trim();
-            String playerName = getPlayerName();
-            if (playerName == null || sender.equalsIgnoreCase(playerName)) return true;
-        }
-
+        // One ownership check for every funk phrase below — another medic announcing their own
+        // shift must never put this client on duty.
         if (!isOwnMessage(getPlayerName(), extractFunkSender(msg), msg)) return null;
 
+        if (FUNK_SHIFT_JOIN.matcher(msg).find()) return true;
         if (msg.contains("Ich bin wieder auf dem Server")) return true;
         if (msg.contains("Ich bin nicht mehr im Dienst") || msg.contains("Ich bin nun offline")) return false;
         return null;
