@@ -182,8 +182,9 @@ public final class MicroscopeOverlay {
         if (compact) {
             return MicroscopeConfig.getInstance().isIconLabels()
                     // No checkbox fits beside a 16px icon at this size; the cell frame carries
-                    // the tick state instead.
-                    ? new Layout(4, 4, ICON_SIZE + 1, ICON_SIZE + 1, true, true, false, false)
+                    // the tick state instead, which is why the cell is a pixel wider than the
+                    // icon on each side — the frame would clip it otherwise.
+                    ? new Layout(4, 4, ICON_SIZE + 2, ICON_SIZE + 2, true, true, false, false)
                     : new Layout(2, 8, BOX_SIZE + BOX_GAP + widestShortName(font), 11, true, false, true, true);
         }
         return MicroscopeConfig.getInstance().isIconLabels()

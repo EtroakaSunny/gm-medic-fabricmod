@@ -154,8 +154,9 @@ public final class MicroscopeColors {
     }
 
     /**
-     * A brighter variant of {@link DyeColor#getTextColor()} for very dark colours, so black,
-     * blue and brown stay legible on the panel's dark background. Returns an opaque ARGB value.
+     * A brighter variant of {@link DyeColor#getTextColor()} for very dark colours, so blue,
+     * brown, purple and black stay legible on the panel's dark background. Returns an opaque
+     * ARGB value.
      */
     public static int textColorOf(DyeColor color) {
         int rgb = color.getTextColor();
@@ -163,18 +164,24 @@ public final class MicroscopeColors {
         int g = rgb >> 8 & 0xFF;
         int b = rgb & 0xFF;
         int luminance = (r * 299 + g * 587 + b * 114) / 1000;
-        if (luminance < MIN_TEXT_LUMINANCE) {
-            // Lift towards white by exactly as much as the colour is too dark, so the hue
-            // survives instead of every dark colour washing out to the same grey.
-            float lift = (MIN_TEXT_LUMINANCE - luminance) / (float) MIN_TEXT_LUMINANCE;
-            r = (int) (r + (255 - r) * lift);
-            g = (int) (g + (255 - g) * lift);
-            b = (int) (b + (255 - b) * lift);
+        if (luminance <= 0 || luminance >= MIN_TEXT_LUMINANCE) {
+            return 0xFF000000 | rgb;
         }
+        // Scale the channels instead of blending towards white: blending brightens a colour by
+        // draining it, and a washed-out blue, purple and brown all end up the same pale grey.
+        // Scaling keeps the hue that names the entry. A channel that reaches 255 simply stops
+        // there — red is already legible without turning pink.
+        r = Math.min(255, r * MIN_TEXT_LUMINANCE / luminance);
+        g = Math.min(255, g * MIN_TEXT_LUMINANCE / luminance);
+        b = Math.min(255, b * MIN_TEXT_LUMINANCE / luminance);
         return 0xFF000000 | r << 16 | g << 8 | b;
     }
 
-    private static final int MIN_TEXT_LUMINANCE = 110;
+    /**
+     * Kept just under grey's own brightness, so lifting black does not make "Schwarz" and
+     * "Grau" the same colour.
+     */
+    private static final int MIN_TEXT_LUMINANCE = 105;
 
     private static Item dyeItem(DyeColor color) {
         return Items.DYE.pick(color);
