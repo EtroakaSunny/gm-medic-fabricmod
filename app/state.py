@@ -49,6 +49,25 @@ SYNC_LOG_MAX_ENTRIES = 1000
 # and neither is useful history (positions are already live on the map).
 _SYNC_LOG_EXCLUDED_TYPES = {"PING", "PONG", "LOCATION_UPDATE"}
 
+# Cap on a single socket send in a broadcast fan-out. Without this, one
+# half-dead connection (dropped Wi-Fi, sleeping phone, a NAT that silently
+# dropped the mapping) can sit in ``ws.send_text()`` for a long time before
+# the OS ever reports it as gone — and since every broadcast loop below sends
+# to one socket at a time, that single stuck send stalls delivery to every
+# *other* client behind it in the same broadcast. A generous timeout (well
+# above the mod's 30s PING interval) turns a stuck socket into a quick,
+# isolated "dead, drop it" instead of a stall felt by everyone.
+SEND_TIMEOUT_SECONDS = 5
+
+
+async def _safe_send(ws: WebSocket, payload: str) -> bool:
+    """Sends ``payload`` with a bounded wait; True on success."""
+    try:
+        await asyncio.wait_for(ws.send_text(payload), timeout=SEND_TIMEOUT_SECONDS)
+        return True
+    except Exception:
+        return False
+
 
 def _seconds_until_next_midnight(tz_name: str) -> float:
     tz = ZoneInfo(tz_name)
@@ -86,6 +105,10 @@ class LiveState:
         self.alarm: dict | None = None
         # mod websocket -> username
         self.mod_ws: dict[WebSocket, str] = {}
+        # username -> the one mod_ws connection currently "owning" that
+        # session, so a stale duplicate connection's disconnect can never be
+        # mistaken for the current one's (see register_mod/unregister_mod).
+        self._owner_ws: dict[str, WebSocket] = {}
         # connected GUI sockets -> {"permissions": set, "role": str}
         self.admin_ws: dict[WebSocket, dict] = {}
         # ring buffer of {id, ts, username, direction, msgType, message} —
@@ -95,7 +118,27 @@ class LiveState:
 
     # --- Mod connection registry ---
 
-    def register_mod(self, ws: WebSocket, username: str, mod_version: str | None = None) -> None:
+    async def register_mod(self, ws: WebSocket, username: str, mod_version: str | None = None) -> None:
+        """Registers a newly authenticated mod connection as the one owning
+        ``username``'s session.
+
+        A reconnecting client (flaky network, client-side timeout) may open
+        its new socket before the server has noticed the old one is dead —
+        nothing about ``mod_ws`` (keyed by socket, not username) otherwise
+        stops both from being registered at once. Left alone, whichever one's
+        disconnect fires last would win and tear down the session, even if
+        that's the *stale* connection finally timing out after the live one
+        already took over. Evicting the old connection here removes that
+        ambiguity outright instead of racing on cleanup.
+        """
+        old = self._owner_ws.get(username)
+        if old is not None and old is not ws:
+            self.mod_ws.pop(old, None)
+            try:
+                await old.close(code=4001)
+            except Exception:
+                pass
+        self._owner_ws[username] = ws
         self.mod_ws[ws] = username
         info = self.online.setdefault(
             username, {"x": None, "y": None, "z": None, "on_duty": False, "last_seen": _now_ms()}
@@ -104,9 +147,18 @@ class LiveState:
         info["mod_version"] = mod_version
 
     def unregister_mod(self, ws: WebSocket) -> str | None:
+        """Unregisters ``ws``. Returns the username if ``ws`` was that user's
+        *current* connection (a genuine disconnect the caller should act on),
+        or None if it was a stale/superseded connection whose cleanup arrived
+        after a newer one already replaced it — in which case the live
+        session must be left alone."""
         username = self.mod_ws.pop(ws, None)
-        if username:
-            self.online.pop(username, None)
+        if username is None:
+            return None
+        if self._owner_ws.get(username) is not ws:
+            return None
+        self._owner_ws.pop(username, None)
+        self.online.pop(username, None)
         return username
 
     # --- Sync log (admin "Logs" tab) ---
@@ -392,9 +444,7 @@ class LiveState:
         for ws, info in list(self.admin_ws.items()):
             if required is not None and not (info["permissions"] & required):
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
         for ws in dead:
             self.admin_ws.pop(ws, None)
@@ -410,12 +460,19 @@ class LiveState:
         for ws, info in list(self.admin_ws.items()):
             if info["role"] != role:
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
         for ws in dead:
             self.admin_ws.pop(ws, None)
+
+    async def _reap_dead_mod(self, ws: WebSocket) -> None:
+        """Cleans up a mod socket a broadcast just found dead, going through
+        ``unregister_mod`` so a stale duplicate connection (see register_mod)
+        can never be mistaken for the one currently owning that username's
+        session, and notifies admin GUIs only for a genuine disconnect."""
+        username = self.unregister_mod(ws)
+        if username is not None:
+            await self.broadcast_admin({"type": "medic_offline", "username": username})
 
     async def broadcast_mods(self, message: dict, exclude: WebSocket | None = None) -> None:
         """Fan a message out to all connected mod clients (optionally minus the sender)."""
@@ -426,14 +483,12 @@ class LiveState:
         for ws, username in list(self.mod_ws.items()):
             if ws is exclude:
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
                 continue
             await self.record_sync(username, "out", message)
         for ws in dead:
-            self.mod_ws.pop(ws, None)
+            await self._reap_dead_mod(ws)
 
     async def broadcast_mods_off_duty(self, message: dict) -> None:
         """Fan a message out to connected mod clients whose medic is NOT on duty."""
@@ -445,14 +500,12 @@ class LiveState:
             info = self.online.get(username)
             if info is not None and info.get("on_duty"):
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
                 continue
             await self.record_sync(username, "out", message)
         for ws in dead:
-            self.mod_ws.pop(ws, None)
+            await self._reap_dead_mod(ws)
 
     async def send_to_usernames(self, usernames: set[str], message: dict) -> list[str]:
         """Sends a message to only the given (connected) mod clients — the admin
@@ -466,15 +519,13 @@ class LiveState:
         for ws, username in list(self.mod_ws.items()):
             if username not in usernames:
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
                 continue
             await self.record_sync(username, "out", message)
             sent.append(username)
         for ws in dead:
-            self.mod_ws.pop(ws, None)
+            await self._reap_dead_mod(ws)
         return sent
 
     async def disconnect_mod(self, username: str, code: int = 4000) -> bool:
@@ -502,14 +553,12 @@ class LiveState:
             info = self.online.get(username)
             if info is None or not info.get("on_duty"):
                 continue
-            try:
-                await ws.send_text(payload)
-            except Exception:
+            if not await _safe_send(ws, payload):
                 dead.append(ws)
                 continue
             await self.record_sync(username, "out", message)
         for ws in dead:
-            self.mod_ws.pop(ws, None)
+            await self._reap_dead_mod(ws)
 
 
 state = LiveState()

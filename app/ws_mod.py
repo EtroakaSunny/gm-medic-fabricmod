@@ -15,7 +15,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from . import config, database, modversion, roster
 from .nav import nav
 from .nearest import compute_nearest, distance_to_medic
-from .state import safe_float, state
+from .state import SEND_TIMEOUT_SECONDS, safe_float, state
 
 router = APIRouter()
 
@@ -53,7 +53,10 @@ async def _authenticate(token: str | None, username: str | None):
 
 
 async def _send(ws: WebSocket, obj: dict) -> None:
-    await ws.send_text(json.dumps(obj))
+    # Bounded like every broadcast send (see state.SEND_TIMEOUT_SECONDS): a
+    # half-dead socket here would otherwise stall this client's own message
+    # loop indefinitely instead of just dropping the connection.
+    await asyncio.wait_for(ws.send_text(json.dumps(obj)), timeout=SEND_TIMEOUT_SECONDS)
     # Looked up rather than threaded through every call site: state.register_mod
     # runs before any of these sends, so by the time one fires the socket is
     # already keyed by username (or, pre-auth, simply isn't — nothing to log yet).
@@ -98,7 +101,7 @@ async def mod_ws(ws: WebSocket):
             return
 
         username = msg["username"]
-        state.register_mod(ws, username, msg.get("modVersion"))
+        await state.register_mod(ws, username, msg.get("modVersion"))
         await _send(ws, {"type": "AUTH_OK", "username": username, "expiresAt": expires})
 
         # Purely informational: tell an out-of-date client that a newer mod
@@ -135,9 +138,13 @@ async def mod_ws(ws: WebSocket):
         pass
     finally:
         if username is not None:
-            state.unregister_mod(ws)
-            nav.forget_track(username)
-            await state.broadcast_admin({"type": "medic_offline", "username": username})
+            # None means this socket was a stale duplicate connection that a
+            # newer one (a reconnect) already superseded via register_mod —
+            # the live session belongs to that newer socket and must not be
+            # torn down just because this old one finally noticed it was dead.
+            if state.unregister_mod(ws) is not None:
+                nav.forget_track(username)
+                await state.broadcast_admin({"type": "medic_offline", "username": username})
 
 
 async def _handle(ws: WebSocket, username: str, msg: dict) -> None:

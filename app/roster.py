@@ -20,6 +20,12 @@ _NAME_ATTR = re.compile(r'data-tippy-content="([^"]+)"')
 
 _cached_names: frozenset[str] = frozenset()
 _cached_at: float = float("-inf")
+# Serializes cache refreshes: without it, a burst of clients connecting the
+# moment the cache goes stale (e.g. many reconnecting at once after a network
+# blip) each see it as stale simultaneously and all fire their own blocking
+# fetch to the same external page at once, competing for the same small
+# to_thread executor pool that nav autosave/simplify also use.
+_refresh_lock = asyncio.Lock()
 
 
 def _fetch_names() -> frozenset[str]:
@@ -38,13 +44,18 @@ async def is_fraction_member(username: str | None) -> bool:
         return False
     now = time.monotonic()
     if now - _cached_at > config.ROSTER_CACHE_SECONDS:
-        try:
-            names = await asyncio.to_thread(_fetch_names)
-            _cached_names = names
-            log.info("Fraction roster refreshed: %d member(s)", len(names))
-        except Exception as e:
-            log.warning("Fraction roster fetch failed (keeping last roster): %s", e)
-        # Advance the timestamp even on failure so a dead ACP is retried at
-        # most once per cache window instead of on every auth attempt.
-        _cached_at = now
+        async with _refresh_lock:
+            # Re-check: another task may have refreshed while we waited.
+            now = time.monotonic()
+            if now - _cached_at > config.ROSTER_CACHE_SECONDS:
+                try:
+                    names = await asyncio.to_thread(_fetch_names)
+                    _cached_names = names
+                    log.info("Fraction roster refreshed: %d member(s)", len(names))
+                except Exception as e:
+                    log.warning("Fraction roster fetch failed (keeping last roster): %s", e)
+                # Advance the timestamp even on failure so a dead ACP is
+                # retried at most once per cache window instead of on every
+                # auth attempt.
+                _cached_at = now
     return username.strip().lower() in _cached_names
