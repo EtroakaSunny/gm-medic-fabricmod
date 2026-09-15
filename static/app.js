@@ -175,8 +175,8 @@ function handleWsMessage(msg) {
         case "history_update":
             history.set(msg.call.callId, msg.call);
             break;
-        case "history_cleared":
-            history.clear();
+        case "history_removed":
+            history.delete(msg.callId);
             break;
     }
     renderMedics();

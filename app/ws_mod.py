@@ -241,6 +241,7 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
         nearest, dist = compute_nearest(stored, state.online)
         if nearest is not None:
             stored["suggestedMedic"] = nearest
+            state.persist_call(stored)
             await state.broadcast_admin({"type": "call_update", "call": stored})
             await state.broadcast_mods_on_duty({
                 "type": "NEAREST_MEDIC",
@@ -260,6 +261,7 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
             call["assignedMedicNearbyDistance"] = distance_to_medic(
                 call, state.online, medic_name, config.MEDIC_NEARBY_THRESHOLD_BLOCKS
             )
+            state.persist_call(call)
             await state.broadcast_admin({"type": "call_update", "call": call})
             await state.broadcast_mods({"type": "CALL_SYNC", "call": call}, exclude=ws)
 

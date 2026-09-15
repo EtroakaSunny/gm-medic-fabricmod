@@ -34,10 +34,6 @@ ROSTER_URL = os.environ.get(
 )
 ROSTER_CACHE_SECONDS = int(os.environ.get("GM_ROSTER_CACHE_SECONDS", "60"))
 
-# Resolved calls are kept in a same-day history for the admin GUI, cleared
-# out every local midnight in this timezone (not the container's TZ).
-HISTORY_TIMEZONE = os.environ.get("GM_HISTORY_TIMEZONE", "Europe/Berlin")
-
 # Safety net: an open call (E-Call or DEATH) auto-resolves and is archived to
 # history ("erledigt") if nobody handles it within this long.
 CALL_TIMEOUT_MINUTES = float(os.environ.get("GM_CALL_TIMEOUT_MINUTES", "20"))

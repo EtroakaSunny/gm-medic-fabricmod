@@ -8,12 +8,10 @@ import json
 import math
 import time
 from collections import deque
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from fastapi import WebSocket
 
-from . import config, modversion
+from . import config, database, modversion
 
 
 def safe_float(v):
@@ -37,6 +35,11 @@ ALARM_MAX_AGE_MS = 30 * 60 * 1000
 # Safety net: auto-resolve an open call (E-Call or DEATH) after this long.
 CALL_TIMEOUT_MS = int(config.CALL_TIMEOUT_MINUTES * 60 * 1000)
 CALL_TIMEOUT_CHECK_INTERVAL_SECONDS = 60
+
+# Resolved calls are kept in "Verlauf" for a rolling 24h from creation, then
+# dropped from memory and the database alike (see prune_history).
+HISTORY_RETENTION_MS = 24 * 3600 * 1000
+HISTORY_PRUNE_INTERVAL_SECONDS = 300
 
 # How many mod<->server sync messages to keep for the admin "Logs" tab. A
 # ring buffer, not the database — restarting the server clears it, same as
@@ -69,14 +72,6 @@ async def _safe_send(ws: WebSocket, payload: str) -> bool:
         return False
 
 
-def _seconds_until_next_midnight(tz_name: str) -> float:
-    tz = ZoneInfo(tz_name)
-    now = datetime.now(tz)
-    tomorrow = (now + timedelta(days=1)).date()
-    next_midnight = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=tz)
-    return (next_midnight - now).total_seconds()
-
-
 # Which view permission a GUI connection needs to receive each update type.
 # The map draws medics AND calls, so "map" qualifies for both feeds.
 _GUI_MSG_PERMS = {
@@ -86,7 +81,7 @@ _GUI_MSG_PERMS = {
     "call_removed": {"calls", "map"},
     "alarm_update": {"calls", "map"},
     "history_update": {"calls"},
-    "history_cleared": {"calls"},
+    "history_removed": {"calls"},
 }
 
 
@@ -223,7 +218,15 @@ class LiveState:
         stored = self.calls.get(call_id, {})
         stored.update(call)
         self.calls[call_id] = stored
+        database.save_call(stored)
         return stored
+
+    def persist_call(self, call: dict) -> None:
+        """Writes a call's current in-memory contents to disk. Needed only
+        for mutations applied in place (e.g. CALL_ASSIGNED setting
+        ``assignedMedic`` on a dict already in ``self.calls``) — upsert_call
+        and move_call_to_history persist on their own."""
+        database.save_call(call)
 
     def get_call(self, call_id: str) -> dict | None:
         return self.calls.get(call_id)
@@ -254,25 +257,50 @@ class LiveState:
     def move_call_to_history(self, call_id: str) -> dict | None:
         """Pop a resolved call out of the active set and file it under history.
 
-        Keeps a same-day record for the admin GUI instead of the call just
-        vanishing from "Aktive Einsätze" the moment it's resolved.
+        Keeps a rolling 24h record (see prune_history) for the admin GUI
+        instead of the call just vanishing from "Aktive Einsätze" the moment
+        it's resolved.
         """
         call = self.calls.pop(call_id, None)
         if call is not None:
             self.history[call_id] = call
+            database.save_call(call)
         return call
 
-    def clear_history(self) -> list[dict]:
-        cleared = list(self.history.values())
-        self.history.clear()
-        return cleared
+    def load_persisted_calls(self) -> None:
+        """Restores active calls and the last HISTORY_RETENTION_MS of
+        resolved calls from disk. Called once at startup so a restart
+        (redeploy, crash) doesn't wipe the dispatch board — only these
+        in-memory dicts do that, the database doesn't."""
+        cutoff = _now_ms() - HISTORY_RETENTION_MS
+        for call in database.load_calls():
+            call_id = call.get("callId")
+            if call_id is None:
+                continue
+            if call.get("resolved"):
+                if (call.get("timestamp") or 0) >= cutoff:
+                    self.history[call_id] = call
+            else:
+                self.calls[call_id] = call
+        database.prune_calls_older_than(cutoff)
 
-    async def history_midnight_loop(self) -> None:
-        """Clears the resolved-call history every day at local midnight."""
+    def prune_history(self) -> list[str]:
+        """Drops resolved calls older than HISTORY_RETENTION_MS from memory
+        and disk. Returns the callIds removed."""
+        cutoff = _now_ms() - HISTORY_RETENTION_MS
+        expired = [cid for cid, c in self.history.items() if (c.get("timestamp") or 0) < cutoff]
+        for cid in expired:
+            del self.history[cid]
+        if expired:
+            database.prune_calls_older_than(cutoff)
+        return expired
+
+    async def history_prune_loop(self) -> None:
+        """Periodically drops history entries once they age past 24h."""
         while True:
-            await asyncio.sleep(_seconds_until_next_midnight(config.HISTORY_TIMEZONE))
-            if self.clear_history():
-                await self.broadcast_admin({"type": "history_cleared"})
+            await asyncio.sleep(HISTORY_PRUNE_INTERVAL_SECONDS)
+            for call_id in self.prune_history():
+                await self.broadcast_admin({"type": "history_removed", "callId": call_id})
 
     def expire_stale_calls(self) -> list[dict]:
         """Auto-resolve open calls (E-Call or DEATH) that have sat unhandled

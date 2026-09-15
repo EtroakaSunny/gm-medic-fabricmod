@@ -41,6 +41,21 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- Active and recent (last 24h) resolved calls, so a restart or crash doesn't
+-- wipe the dispatch board the way losing state.py's in-memory dicts would.
+-- The full call dict is kept as JSON since its shape has grown ad hoc
+-- (assignedMedic, suggestedMedic, resolveReason, ...) and keeping this table
+-- in lockstep with every new field would be pure overhead for a value
+-- nothing here queries by.
+CREATE TABLE IF NOT EXISTS calls (
+    call_id   TEXT PRIMARY KEY,
+    resolved  INTEGER NOT NULL DEFAULT 0,
+    timestamp INTEGER NOT NULL,
+    data      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls (timestamp);
 """
 
 
@@ -214,6 +229,39 @@ def delete_token(token: str) -> None:
 def delete_tokens_for_user(username: str) -> int:
     with _conn() as conn:
         cur = conn.execute("DELETE FROM tokens WHERE username = ?", (username,))
+        return cur.rowcount
+
+
+# --- Calls (active + recent history, survives restarts) ---
+
+def save_call(call: dict) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO calls (call_id, resolved, timestamp, data) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(call_id) DO UPDATE SET resolved = excluded.resolved, "
+            "timestamp = excluded.timestamp, data = excluded.data",
+            (
+                call["callId"],
+                int(bool(call.get("resolved"))),
+                call.get("timestamp") or _now_ms(),
+                json.dumps(call),
+            ),
+        )
+
+
+def load_calls() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT data FROM calls").fetchall()
+        return [json.loads(r["data"]) for r in rows]
+
+
+def prune_calls_older_than(cutoff_ms: int) -> int:
+    """Deletes resolved calls whose ``timestamp`` predates ``cutoff_ms``.
+    Open calls are never touched here regardless of age."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM calls WHERE resolved = 1 AND timestamp < ?", (cutoff_ms,)
+        )
         return cur.rowcount
 
 
