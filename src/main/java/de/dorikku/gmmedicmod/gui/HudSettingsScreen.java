@@ -70,10 +70,18 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         );
         y += ROW_SPACING;
 
-        // Hiding the chat blocks only makes sense while the panel can stand in for their buttons.
+        // Hiding the chat blocks only makes sense while the panel can stand in for their buttons,
+        // and the distance stands in for the hidden "Distanz" line, so it depends on the hiding.
+        CycleButton<Boolean> distanceButton = CycleButton.onOffBuilder(cfg.isCallDistanceEnabled())
+                .create(x, y + ROW_SPACING * 2, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Eigene Entfernung (5 s)"),
+                        (btn, value) -> HudConfig.getInstance().setCallDistanceEnabled(value));
+        distanceButton.active = cfg.isClickableCallsEnabled() && cfg.isHideCallChatEnabled();
         CycleButton<Boolean> hideChatButton = CycleButton.onOffBuilder(cfg.isHideCallChatEnabled())
                 .create(x, y + ROW_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Notrufe im Chat ausblenden"),
-                        (btn, value) -> HudConfig.getInstance().setHideCallChatEnabled(value));
+                        (btn, value) -> {
+                            HudConfig.getInstance().setHideCallChatEnabled(value);
+                            distanceButton.active = HudConfig.getInstance().isClickableCallsEnabled() && value;
+                        });
         hideChatButton.active = cfg.isClickableCallsEnabled();
         this.addRenderableWidget(
                 CycleButton.onOffBuilder(cfg.isClickableCallsEnabled())
@@ -81,10 +89,12 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
                                 (btn, value) -> {
                                     HudConfig.getInstance().setClickableCallsEnabled(value);
                                     hideChatButton.active = value;
+                                    distanceButton.active = value && HudConfig.getInstance().isHideCallChatEnabled();
                                 })
         );
         this.addRenderableWidget(hideChatButton);
-        y += ROW_SPACING * 2;
+        this.addRenderableWidget(distanceButton);
+        y += ROW_SPACING * 3;
 
         this.addRenderableWidget(
                 CycleButton.onOffBuilder(cfg.isAlarmBannerEnabled())

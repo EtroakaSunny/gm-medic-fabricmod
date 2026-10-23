@@ -25,6 +25,9 @@ you can focus on the response.
   - *Notrufe im Chat ausblenden* additionally keeps the transmission blocks out of the
     chat. They are still parsed and reported to the API server; if two transmissions
     collide (the panel shows *⚠ Fehler*), the hidden lines are shown after all.
+  - *Eigene Entfernung (5 s)* (on by default, only while the blocks are hidden) shows
+    your own distance to a new call on the panel for its first 5 seconds, in place of
+    the hidden *Distanz* line.
 - **Automatic chat parsing** — detects, straight from the GermanMiner `[FUNK]` and
   system chat: going **on/off duty**, **new emergency calls**, **death reports**, and a
   call being **accepted, rejected, reached or withdrawn** — no manual input needed.
