@@ -17,7 +17,6 @@ import de.dorikku.gmmedicmod.handler.CallChatFilter;
 import de.dorikku.gmmedicmod.handler.CallRejectPrompt;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.AlarmHud;
-import de.dorikku.gmmedicmod.hud.CallHudInteraction;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
@@ -89,7 +88,6 @@ public class GMMedicClient implements ClientModInitializer {
         ClientReceiveMessageEvents.ALLOW_GAME.register(ChatMessageHandler::onGameMessage);
 
         MicroscopeOverlay.register();
-        CallHudInteraction.register();
 
         HudElementRegistry.addLast(
                 Identifier.fromNamespaceAndPath(GMMedic.MOD_ID, "emergency_calls_hud"),
