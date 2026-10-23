@@ -4,6 +4,8 @@ import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.manager.EmergencyCallManager;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -46,8 +48,32 @@ public class EmergencyCallHud {
     private static final int TIMER_FLASH  = 0xFFFF5555;
 
     private static final long LOCATION_TOGGLE_MS = 7_000L;
+    /** Half-period of the flashing background behind a call nobody has accepted yet. */
+    private static final long FLASH_HALF_PERIOD_MS = 500L;
+    private static final int FLASH_ECALL = 0x66FFAA00;
+    private static final int FLASH_DEATH = 0x66FF5555;
+
+    /** Where a call was drawn in the last frame, in GUI-scaled pixels — the panel's click targets. */
+    public record EntryBounds(EmergencyCall call, int x1, int y1, int x2, int y2) {
+        public boolean contains(double x, double y) {
+            return x >= x1 && x < x2 && y >= y1 && y < y2;
+        }
+    }
+
+    private static final List<EntryBounds> ENTRY_BOUNDS = new ArrayList<>();
+
+    /** The entries drawn in the last frame; empty while the panel is hidden or has no calls. */
+    public static List<EntryBounds> getEntryBounds() {
+        return Collections.unmodifiableList(ENTRY_BOUNDS);
+    }
+
+    /** True for a call that is still waiting for a medic — the ones that flash when the panel is clickable. */
+    public static boolean isOpen(EmergencyCall call) {
+        return !call.isPending() && !call.isResolved() && !call.isRejected() && !call.isAccepted();
+    }
 
     public static void render(GuiGraphicsExtractor drawContext, DeltaTracker tickCounter) {
+        ENTRY_BOUNDS.clear();
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
         if (!ApiConnection.getInstance().isFeatureUnlocked()) return;
@@ -124,9 +150,19 @@ public class EmergencyCallHud {
         drawContext.fill(panelX + padding, currentY - 2, panelX + panelWidth - padding, currentY - 1, RESOLVED_COLOR);
 
         boolean showCoords = System.currentTimeMillis() / LOCATION_TOGGLE_MS % 2 == 0;
+        boolean clickable = HudConfig.getInstance().isClickableCallsEnabled();
+        boolean flashOn = System.currentTimeMillis() / FLASH_HALF_PERIOD_MS % 2 == 0;
 
         for (int i = 0; i < calls.size(); i++) {
-            currentY = drawCallEntry(drawContext, textRenderer, calls.get(i), panelX, currentY, panelWidth, i + 1, showCoords, compact, padding, lineHeight);
+            EmergencyCall call = calls.get(i);
+            int entryTop = currentY;
+            if (clickable && flashOn && isOpen(call)) {
+                int flash = call.getType() == EmergencyCall.CallType.DEATH ? FLASH_DEATH : FLASH_ECALL;
+                drawContext.fill(panelX + 1, entryTop - 1, panelX + panelWidth - 1,
+                        entryTop + calculateEntryHeight(call, lineHeight, compact) + 1, flash);
+            }
+            currentY = drawCallEntry(drawContext, textRenderer, call, panelX, currentY, panelWidth, i + 1, showCoords, compact, padding, lineHeight);
+            ENTRY_BOUNDS.add(new EntryBounds(call, panelX, entryTop - 1, panelX + panelWidth, currentY + 1));
             if (i < calls.size() - 1) {
                 currentY += entrySpacing;
                 int divInset = compact ? 4 : 10;

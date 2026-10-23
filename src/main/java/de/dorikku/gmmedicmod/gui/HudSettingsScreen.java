@@ -70,6 +70,22 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         );
         y += ROW_SPACING;
 
+        // Hiding the chat blocks only makes sense while the panel can stand in for their buttons.
+        CycleButton<Boolean> hideChatButton = CycleButton.onOffBuilder(cfg.isHideCallChatEnabled())
+                .create(x, y + ROW_SPACING, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Notrufe im Chat ausblenden"),
+                        (btn, value) -> HudConfig.getInstance().setHideCallChatEnabled(value));
+        hideChatButton.active = cfg.isClickableCallsEnabled();
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isClickableCallsEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Klickbare Notrufe"),
+                                (btn, value) -> {
+                                    HudConfig.getInstance().setClickableCallsEnabled(value);
+                                    hideChatButton.active = value;
+                                })
+        );
+        this.addRenderableWidget(hideChatButton);
+        y += ROW_SPACING * 2;
+
         this.addRenderableWidget(
                 CycleButton.onOffBuilder(cfg.isAlarmBannerEnabled())
                         .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Alarm-Banner"),
