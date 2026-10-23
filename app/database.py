@@ -255,6 +255,14 @@ def load_calls() -> list[dict]:
         return [json.loads(r["data"]) for r in rows]
 
 
+def delete_call(call_id: str) -> bool:
+    """Removes one call outright (active or resolved) — the admin GUI's
+    "delete a wrong call" tool. True if a row was deleted."""
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM calls WHERE call_id = ?", (call_id,))
+        return cur.rowcount > 0
+
+
 def prune_calls_older_than(cutoff_ms: int) -> int:
     """Deletes resolved calls whose ``timestamp`` predates ``cutoff_ms``.
     Open calls are never touched here regardless of age."""

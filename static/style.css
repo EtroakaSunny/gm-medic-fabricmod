@@ -137,6 +137,14 @@ button.ghost.danger:hover { background: var(--danger); color: #fff; }
 .badge.resolved { background: rgba(139,147,161,.18); color: var(--muted); }
 .del { background: transparent; color: var(--muted); border: none; padding: 2px 6px; cursor: pointer; font-size: 16px; }
 .del:hover { color: var(--danger); }
+.call-details { margin-top: 4px; }
+.call-details summary { cursor: pointer; }
+.details-table { border-collapse: collapse; margin-top: 4px; font-size: 12px; width: 100%; }
+.details-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 1px 8px 1px 0; white-space: nowrap; vertical-align: top; }
+.details-table td { padding: 1px 0; word-break: break-all; }
+.details-table code { font-size: 11px; }
+.copy { background: transparent; color: var(--muted); border: none; padding: 0 4px; cursor: pointer; }
+.copy:hover { color: var(--accent); }
 
 .add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 

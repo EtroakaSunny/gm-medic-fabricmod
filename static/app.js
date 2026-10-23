@@ -273,20 +273,67 @@ function _callRowHtml(c) {
     const loc = (c.locationName && c.locationName.length)
         ? escapeHtml(c.locationName)
         : (c.x != null ? `X ${Math.round(c.x)}, Z ${Math.round(c.z)}` : "unbekannt");
-    return `<div class="row"><span class="name">${escapeHtml(c.callerName || "?")}</span>${typeBadge}${statusBadge}</div>
+    const del = isAdmin() ? `<button class="del" title="Notruf löschen">×</button>` : "";
+    return `<div class="row"><span class="name">${escapeHtml(c.callerName || "?")}</span><span>${typeBadge}${statusBadge}${del}</span></div>
             <div class="meta">${escapeHtml(c.reason || "")}</div>
-            <div class="meta">${loc}</div>${medic}`;
+            <div class="meta">${loc}</div>${medic}
+            <details class="call-details"><summary class="meta">Details</summary>${_callDetailsHtml(c)}</details>`;
+}
+
+function _fmtMs(ms) {
+    return ms ? new Date(ms).toLocaleString("de-DE") : "–";
+}
+
+/** Everything the server knows about one call, for tracing and support. */
+function _callDetailsHtml(c) {
+    const coords = c.x != null ? `${Math.round(c.x)} / ${Math.round(c.y)} / ${Math.round(c.z)}` : "–";
+    const status = c.resolved ? `erledigt (${c.resolveReason || "?"})` : (c.assignedMedic ? "angenommen" : "offen");
+    const rows = [
+        ["Call-ID", `<code>${escapeHtml(c.callId)}</code> <button class="copy" title="Kopieren">⧉</button>`],
+        ["Typ", escapeHtml(c.callType)],
+        ["Status", escapeHtml(status)],
+        ["Erstellt", escapeHtml(_fmtMs(c.timestamp))],
+        ["Gemeldet von", escapeHtml(c.reportedBy || "–")],
+        ["Sanitäter", escapeHtml(c.assignedMedic || "–")],
+        ["Vorgeschlagen", escapeHtml(c.suggestedMedic || "–")],
+        ["Zurückgewiesen von", escapeHtml(c.rejectedBy || "–")],
+        ["Koordinaten", escapeHtml(coords)],
+        ["Ort", escapeHtml(c.locationName || "–")],
+        ["Frist", escapeHtml(_fmtMs(c.deadlineMs))],
+    ];
+    return `<table class="details-table">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</table>`;
+}
+
+// callIds whose details are expanded — the lists are rebuilt on every update,
+// which would otherwise snap an open <details> shut.
+const openCallDetails = new Set();
+
+function _callItem(c) {
+    const li = document.createElement("li");
+    li.innerHTML = _callRowHtml(c);
+    const details = li.querySelector(".call-details");
+    details.open = openCallDetails.has(c.callId);
+    details.addEventListener("toggle", () => {
+        if (details.open) openCallDetails.add(c.callId); else openCallDetails.delete(c.callId);
+    });
+    li.querySelector(".copy").addEventListener("click", () => navigator.clipboard.writeText(c.callId));
+    const del = li.querySelector(".del");
+    if (del) del.addEventListener("click", () => deleteCall(c));
+    return li;
+}
+
+async function deleteCall(c) {
+    if (!confirm(`Notruf von "${c.callerName || "?"}" löschen?\n\nEr verschwindet aus diesem Panel und aus dem Notrufe-Panel aller Sanitäter, ohne Eintrag im Verlauf.`)) return;
+    const res = await api(`/api/calls/${encodeURIComponent(c.callId)}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 404) alert("Löschen fehlgeschlagen: " + res.status);
+    // The server's call_removed/history_removed broadcast updates the lists.
 }
 
 function renderCalls() {
     const ul = document.getElementById("call-list");
     ul.innerHTML = "";
     const list = [...calls.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    for (const c of list) {
-        const li = document.createElement("li");
-        li.innerHTML = _callRowHtml(c);
-        ul.appendChild(li);
-    }
+    for (const c of list) ul.appendChild(_callItem(c));
 }
 
 function renderHistory() {
@@ -294,11 +341,7 @@ function renderHistory() {
     if (!ul) return;
     ul.innerHTML = "";
     const list = [...history.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    for (const c of list) {
-        const li = document.createElement("li");
-        li.innerHTML = _callRowHtml(c);
-        ul.appendChild(li);
-    }
+    for (const c of list) ul.appendChild(_callItem(c));
 }
 
 // --- Leaflet map on GermanMiner BlueMap tiles (proxied via /map/) ---

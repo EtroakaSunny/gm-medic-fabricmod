@@ -206,6 +206,12 @@ async def _handle(ws: WebSocket, username: str, msg: dict) -> None:
         if call_id is not None and state.get_call(call_id) is not None:
             # Same client resending (e.g. reconnect) — only the first report counts.
             return
+        if state.is_deleted(call_id):
+            # An admin deleted this call as wrong; a client that missed the
+            # CALL_REMOVED (offline at the time) is told again instead of the
+            # call being re-created.
+            await _send(ws, {"type": "CALL_REMOVED", "callId": call_id})
+            return
 
         duplicate = state.find_open_call_by_caller(msg.get("callerName"), msg.get("callType"))
         if duplicate is not None:

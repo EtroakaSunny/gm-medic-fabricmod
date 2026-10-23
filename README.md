@@ -61,7 +61,12 @@ migrated automatically as admins). Two roles:
 - **admin** — sees everything and additionally manages medics (allow-list,
   token revocation) and users (create/delete, role, permissions, password
   reset). The bootstrap account from `GM_ADMIN_USER`/`GM_ADMIN_PASSWORD` is
-  an admin.
+  an admin. Admins can also delete a wrong call (active or history) with
+  `DELETE /api/calls/{callId}` — the × on a call in the GUI. It is removed
+  from the server, the database and every mod client's Notrufe panel
+  (`CALL_REMOVED`), and a later `CALL_NEW` for the same callId is ignored.
+  Every call's *Details* show its callId (copyable), reporter, times,
+  coordinates and assigned/suggested medic.
 - **user** — read-only viewer. What they see is picked per account from the
   view permissions `medics` (roster panel), `map` (live map), `calls`
   (call list), `nav` (beta navigation tab).

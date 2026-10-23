@@ -110,6 +110,11 @@ class LiveState:
         # every mod<->server sync message, for the admin "Logs" tab
         self.sync_log: deque = deque(maxlen=SYNC_LOG_MAX_ENTRIES)
         self._sync_log_seq = 0
+        # callId -> deletedAtMs for calls an admin deleted, so a late CALL_NEW
+        # for the same callId (a client that was offline when the delete went
+        # out, re-reporting on reconnect) can't bring it back. In memory only
+        # and kept for HISTORY_RETENTION_MS (see prune_history).
+        self.deleted_call_ids: dict[str, int] = {}
 
     # --- Mod connection registry ---
 
@@ -267,6 +272,20 @@ class LiveState:
             database.save_call(call)
         return call
 
+    def delete_call(self, call_id: str) -> dict | None:
+        """Deletes a call an admin marked as wrong — from the active set or
+        history, and from disk. Unlike resolving it leaves no history entry.
+        Returns the deleted call, or None if the callId is unknown."""
+        call = self.calls.pop(call_id, None) or self.history.pop(call_id, None)
+        if call is None:
+            return None
+        database.delete_call(call_id)
+        self.deleted_call_ids[call_id] = _now_ms()
+        return call
+
+    def is_deleted(self, call_id) -> bool:
+        return call_id is not None and call_id in self.deleted_call_ids
+
     def load_persisted_calls(self) -> None:
         """Restores active calls and the last HISTORY_RETENTION_MS of
         resolved calls from disk. Called once at startup so a restart
@@ -291,6 +310,8 @@ class LiveState:
         expired = [cid for cid, c in self.history.items() if (c.get("timestamp") or 0) < cutoff]
         for cid in expired:
             del self.history[cid]
+        for cid in [cid for cid, at in self.deleted_call_ids.items() if at < cutoff]:
+            del self.deleted_call_ids[cid]
         if expired:
             database.prune_calls_older_than(cutoff)
         return expired

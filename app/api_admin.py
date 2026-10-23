@@ -73,6 +73,24 @@ def get_calls(_: dict = Depends(require_permission("calls"))):
     return list(state.calls.values())
 
 
+@router.delete("/calls/{call_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_call(call_id: str, _: dict = Depends(get_current_admin)):
+    """Admin GUI "delete wrong call" tool: removes an active or history call
+    everywhere — server state, database, every mod client's Notrufe panel
+    (CALL_REMOVED, which the mod handles by callId) and every admin GUI."""
+    call = state.delete_call(call_id)
+    if call is None:
+        raise HTTPException(status_code=404, detail="call not found")
+    await state.broadcast_mods({
+        "type": "CALL_REMOVED",
+        "callId": call_id,
+        "callerName": call.get("callerName"),
+        "callType": call.get("callType"),
+    })
+    await state.broadcast_admin({"type": "call_removed", "callId": call_id})
+    await state.broadcast_admin({"type": "history_removed", "callId": call_id})
+
+
 @router.get("/online")
 def get_online(_: dict = Depends(require_permission("medics"))):
     return [state.medic_view(u) for u in state.online]
