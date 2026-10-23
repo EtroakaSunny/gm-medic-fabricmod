@@ -20,8 +20,11 @@ import net.minecraft.world.item.ItemStack;
  * <ul>
  *   <li><b>Motor</b> — runs {@code /vehicles motor} when entering a vehicle.</li>
  *   <li><b>Gear</b> — drops the item the server places in hand after sitting, which sets the gear shift.</li>
- *   <li><b>Siren</b> — toggles {@code /vehicles sirene} so it is on while an active call exists.</li>
- *   <li><b>Exit</b> — when leaving via sneak, turns the siren off first and delays the dismount.</li>
+ *   <li><b>Siren</b> — set through the car's Auto-Menü ({@link SirenMenu}), which also tells its
+ *       real state: on when entering with an accepted call or when one is accepted while seated,
+ *       off when entering without one.</li>
+ *   <li><b>Exit</b> — leaving via sneak without an accepted call turns the siren off first and
+ *       holds the dismount until that is done; with a call it stays on and the exit is immediate.</li>
  *   <li><b>Camera</b> — switches to third person while seated and back to the previous view on exit.</li>
  * </ul>
  *
@@ -42,13 +45,24 @@ public final class VehicleAutomation {
     private static final long MOTOR_BAR_WAIT_MS = 4_000L;
     /** Overall safety cap on the whole gear-detection window. */
     private static final long GEAR_DETECT_WINDOW_MS = 12_000L;
+    /** A sneak exit never waits longer than this for the siren to be switched off. */
+    private static final long EXIT_SIREN_MAX_WAIT_MS = 4_000L;
 
     private static boolean wasRiding = false;
     private static boolean motorStarted = false;
     private static boolean gearHandled = false;
     private static boolean motorBarSeen = false;
     private static boolean isHelicopter = false;
-    private static boolean sirenOnByMod = false;
+    /** The siren's state as last read from the Auto-Menü; null while unknown. */
+    private static Boolean sirenState = null;
+    /** Whether the siren has been set once for this ride (after the motor/gear phase). */
+    private static boolean sirenSynced = false;
+    /** Accepted-call state on the previous tick, to act on a call being accepted while seated. */
+    private static boolean hadCall = false;
+    /** During a sneak exit: still waiting for the Auto-Menü to switch the siren off. */
+    private static boolean exitWaitingForSiren = false;
+    private static boolean exitSirenRequested = false;
+    private static long exitStartMs = 0L;
     private static boolean exitInProgress = false;
     private static boolean suppressSneak = false;
     private static boolean forceSneak = false;
@@ -125,7 +139,7 @@ public final class VehicleAutomation {
         }
 
         // Must run on START tick: sets suppressSneak before the player tick sends its input packet.
-        handleSneakExit(client, cfg);
+        handleSneakExit(client, cfg, inDuty);
 
         // Only manage the siren once the helicopter check has resolved, and never mid-exit.
         if (gearHandled && !exitInProgress) {
@@ -138,7 +152,11 @@ public final class VehicleAutomation {
         gearHandled = false;
         motorBarSeen = false;
         isHelicopter = false;
-        sirenOnByMod = false;
+        sirenState = null;
+        sirenSynced = false;
+        hadCall = false;
+        exitWaitingForSiren = false;
+        exitSirenRequested = false;
         exitInProgress = false;
         suppressSneak = false;
         forceSneak = false;
@@ -181,7 +199,7 @@ public final class VehicleAutomation {
     }
 
     private static void onDismount() {
-        // Once out of the vehicle we can no longer toggle the siren; just clear local state.
+        // Once out of the vehicle the Auto-Menü is gone; just clear local state.
         suppressSneak = false;
         forceSneak = false;
         exitInProgress = false;
@@ -190,7 +208,11 @@ public final class VehicleAutomation {
         gearHandled = false;
         motorBarSeen = false;
         isHelicopter = false;
-        sirenOnByMod = false;
+        sirenState = null;
+        sirenSynced = false;
+        hadCall = false;
+        exitWaitingForSiren = false;
+        exitSirenRequested = false;
     }
 
     /**
@@ -288,16 +310,30 @@ public final class VehicleAutomation {
         return false;
     }
 
-    private static void handleSneakExit(Minecraft client, VehicleConfig cfg) {
+    private static void handleSneakExit(Minecraft client, VehicleConfig cfg, boolean inDuty) {
         forceSneak = false;
 
         if (exitInProgress) {
             // The exit is latched: once the player asked to leave we always complete it, even if they
-            // released sneak. Hold the dismount back while the siren-off command settles, then inject a
-            // sneak on the final tick so the player actually dismounts.
+            // released sneak. Hold the dismount back until the Auto-Menü has switched the siren off,
+            // then for the configured delay, then inject a sneak so the player actually dismounts.
+            suppressSneak = true;
+            if (exitWaitingForSiren) {
+                boolean timedOut = System.currentTimeMillis() - exitStartMs > EXIT_SIREN_MAX_WAIT_MS;
+                if (SirenMenu.isBusy() && !timedOut) return;
+                // A session that was already running (e.g. the one after entering) may have left the
+                // siren on; ask for "off" once ourselves.
+                if (!exitSirenRequested && !timedOut && !Boolean.FALSE.equals(sirenState)) {
+                    exitSirenRequested = true;
+                    SirenMenu.request(client, false, result -> sirenState = result);
+                    return;
+                }
+                exitWaitingForSiren = false;
+                dismountDelayTicks = Math.max(1, cfg.getExitDelayTicks());
+                return;
+            }
             if (dismountDelayTicks > 0) {
                 dismountDelayTicks--;
-                suppressSneak = true;
             } else {
                 suppressSneak = false;
                 forceSneak = true;
@@ -307,31 +343,48 @@ public final class VehicleAutomation {
             return;
         }
 
-        // Only delay an exit when the mod's siren is on and must be turned off first.
+        // Only hold an exit back when the siren must go off first: no accepted call and not known
+        // to be off already. With a call it stays on and the player leaves right away.
         boolean rawSneak = client.options.keyShift.isDown();
-        if (rawSneak && sirenOnByMod && !isHelicopter) {
+        if (rawSneak && isSirenManaged(cfg, inDuty) && !hasCallAcceptedByMe(client)
+                && !Boolean.FALSE.equals(sirenState)) {
             exitInProgress = true;
-            dismountDelayTicks = Math.max(1, cfg.getExitDelayTicks());
+            exitWaitingForSiren = true;
+            exitSirenRequested = false;
+            exitStartMs = System.currentTimeMillis();
             suppressSneak = true;
-            sendCommand(client, "vehicles sirene");
-            sirenOnByMod = false;
-            GMMedic.LOGGER.info("[GM-Medic] Sneak exit — siren off, delaying dismount {} ticks", dismountDelayTicks);
+            if (!SirenMenu.isBusy()) {
+                exitSirenRequested = true;
+                SirenMenu.request(client, false, result -> sirenState = result);
+            }
+            GMMedic.LOGGER.info("[GM-Medic] Sneak exit without a call — switching the siren off first");
         }
     }
 
-    private static void manageSiren(Minecraft client, VehicleConfig cfg, boolean inDuty) {
-        if (isHelicopter) return;
-        if (!cfg.isSirenEnabled() || !(inDuty || cfg.isSirenAlways())) return;
+    private static boolean isSirenManaged(VehicleConfig cfg, boolean inDuty) {
+        return !isHelicopter && cfg.isSirenEnabled() && (inDuty || cfg.isSirenAlways());
+    }
 
-        boolean wantSiren = hasCallAcceptedByMe(client);
-        if (wantSiren && !sirenOnByMod) {
-            sendCommand(client, "vehicles sirene");
-            sirenOnByMod = true;
-            GMMedic.LOGGER.info("[GM-Medic] Accepted call — siren on");
-        } else if (!wantSiren && sirenOnByMod) {
-            sendCommand(client, "vehicles sirene");
-            sirenOnByMod = false;
-            GMMedic.LOGGER.info("[GM-Medic] No accepted call — siren off");
+    /**
+     * Sets the siren at the two moments it should change while seated: once after entering (on
+     * with an accepted call, off without), and when a call is accepted during the ride (on, left
+     * as it is if already on). Each moment tries the Auto-Menü once; a call ending mid-ride
+     * leaves the siren on until the player gets out.
+     */
+    private static void manageSiren(Minecraft client, VehicleConfig cfg, boolean inDuty) {
+        boolean hasCall = hasCallAcceptedByMe(client);
+        boolean callAccepted = hasCall && !hadCall;
+        hadCall = hasCall;
+        if (!isSirenManaged(cfg, inDuty) || SirenMenu.isBusy()) return;
+
+        if (!sirenSynced) {
+            sirenSynced = true;
+            GMMedic.LOGGER.info("[GM-Medic] Entered vehicle {} an accepted call — siren {}",
+                    hasCall ? "with" : "without", hasCall ? "on" : "off");
+            SirenMenu.request(client, hasCall, result -> sirenState = result);
+        } else if (callAccepted && !Boolean.TRUE.equals(sirenState)) {
+            GMMedic.LOGGER.info("[GM-Medic] Call accepted while seated — siren on");
+            SirenMenu.request(client, true, result -> sirenState = result);
         }
     }
 
@@ -364,6 +417,7 @@ public final class VehicleAutomation {
 
     private static void reset() {
         wasRiding = false;
+        if (SirenMenu.isBusy()) SirenMenu.reset();
         onDismount();
     }
 }

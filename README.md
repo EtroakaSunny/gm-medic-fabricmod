@@ -39,9 +39,14 @@ you can focus on the response.
 - **Vehicle automation** — when you enter an EMS vehicle the mod can:
   - **Motor** — run `/vehicles motor` automatically on entry.
   - **Gear** — drop the gear item the server hands you, to set the gear shift.
-  - **Siren** — toggle `/vehicles sirene` on while you have an accepted call.
-  - **Sneak-exit** — turn the siren off first and briefly delay your dismount when you
-    sneak out (configurable delay). Helicopters are detected and skipped.
+  - **Siren** — set through the car's *Auto-Menü* (what F opens with the
+    Gangwahlhebel in hand), opened and closed unseen: the mod reads the head
+    (*Sirene eingeschaltet/abgeschaltet*) and clicks it only if needed. On entering it
+    goes on with an accepted call and off without one; accepting a call while seated
+    turns it on.
+  - **Sneak-exit** — without an accepted call the siren is switched off first and your
+    dismount waits for it (plus a configurable delay); with a call it stays on and you
+    get out right away. Helicopters are detected and skipped.
   - **Third person** — switch to the third-person view while seated and back to your
     previous view when you get out. Off by default; works on and off duty. If you
     change the view yourself while seated, it is left alone on exit.
