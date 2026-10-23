@@ -71,20 +71,35 @@ public class ChatMessageHandler {
      */
     private static Boolean pendingDutyState = null;
 
-    public static void onGameMessage(Component message, boolean overlay) {
-        if (overlay) return;
+    /**
+     * Registered on {@code ALLOW_GAME} rather than {@code GAME}, so the transmission blocks can be
+     * kept out of the chat ({@link CallChatFilter}). Every line is parsed here first either way;
+     * the return value only decides whether the chat displays it.
+     */
+    public static boolean onGameMessage(Component message, boolean overlay) {
+        if (overlay) return true;
         // Unverified players get nothing from the mod at all — not even duty detection,
         // so isInDuty() can never flip true and everything gated on it stays off too.
         if (!ApiConnection.getInstance().isFeatureUnlocked()) {
             rememberDutyStateWhileLocked(message);
-            return;
+            return true;
         }
         try {
             String raw = message.getString();
             GMMedic.LOGGER.debug("[GM-Medic] Raw message: {}", raw);
+            String sanitized = sanitize(raw);
+            boolean parsingBefore = manager.isInDuty() && manager.getState() == ParsingState.PARSING;
+            boolean transmissionLine = manager.isInDuty() && CallChatFilter.isTransmissionLine(sanitized, parsingBefore);
+            // The parser finalizes the call on the button line, so its buttons are taken first.
+            if (transmissionLine && parsingBefore && CallActions.isButtonLine(sanitized)) {
+                CallActions.capture(message, manager.getPendingCall());
+            }
+            CallRejectPrompt.onMessage(sanitized);
             processMessage(raw);
+            return CallChatFilter.afterParse(message, transmissionLine);
         } catch (Exception e) {
             GMMedic.LOGGER.error("[GM-Medic] Error processing message", e);
+            return true;
         }
     }
 

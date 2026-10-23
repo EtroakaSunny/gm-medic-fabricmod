@@ -11,9 +11,13 @@ import de.dorikku.gmmedicmod.config.VehicleConfig;
 import de.dorikku.gmmedicmod.diagnosis.MicroscopeDiagnosisManager;
 import de.dorikku.gmmedicmod.diagnosis.MicroscopeOverlay;
 import de.dorikku.gmmedicmod.gui.GMMedicMenuScreen;
+import de.dorikku.gmmedicmod.handler.CallActions;
 import de.dorikku.gmmedicmod.handler.CallArrivalCountdown;
+import de.dorikku.gmmedicmod.handler.CallChatFilter;
+import de.dorikku.gmmedicmod.handler.CallRejectPrompt;
 import de.dorikku.gmmedicmod.handler.ChatMessageHandler;
 import de.dorikku.gmmedicmod.hud.AlarmHud;
+import de.dorikku.gmmedicmod.hud.CallHudInteraction;
 import de.dorikku.gmmedicmod.hud.EmergencyCallHud;
 import de.dorikku.gmmedicmod.manager.AlarmManager;
 import de.dorikku.gmmedicmod.manager.BloodDonationManager;
@@ -67,6 +71,8 @@ public class GMMedicClient implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodChatNoteHandler::tick);
         ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(CallChatFilter::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(client -> CallActions.prune());
         ClientTickEvents.START_CLIENT_TICK.register(client -> MicroscopeDiagnosisManager.getInstance().tick());
         ClientTickEvents.END_CLIENT_TICK.register(UpdateNotifier::tick);
 
@@ -80,9 +86,10 @@ public class GMMedicClient implements ClientModInitializer {
             }
         });
 
-        ClientReceiveMessageEvents.GAME.register(ChatMessageHandler::onGameMessage);
+        ClientReceiveMessageEvents.ALLOW_GAME.register(ChatMessageHandler::onGameMessage);
 
         MicroscopeOverlay.register();
+        CallHudInteraction.register();
 
         HudElementRegistry.addLast(
                 Identifier.fromNamespaceAndPath(GMMedic.MOD_ID, "emergency_calls_hud"),
@@ -113,6 +120,9 @@ public class GMMedicClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             EmergencyCallManager.getInstance().setInDuty(false);
             ChatMessageHandler.clearPendingDutyState();
+            CallActions.clear();
+            CallChatFilter.clear();
+            CallRejectPrompt.clear();
             AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
             BloodChatNoteHandler.clear();
