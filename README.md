@@ -46,7 +46,7 @@ you can focus on the response.
     Gangwahlhebel in hand), opened and closed unseen: the mod reads the head
     (*Sirene eingeschaltet/abgeschaltet*) and clicks it only if needed. On entering it
     goes on with an accepted call and off without one; accepting a call while seated
-    turns it on.
+    turns it on, and finishing your last call while still seated turns it off.
   - **Sneak-exit** — without an accepted call the siren is switched off first and your
     dismount waits for it (plus a configurable delay); with a call it stays on and you
     get out right away. Helicopters are detected and skipped.
