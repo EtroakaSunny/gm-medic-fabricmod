@@ -372,16 +372,22 @@ public final class VehicleAutomation {
     }
 
     /**
-     * Sets the siren at the two moments it should change while seated: once after entering (on
-     * with an accepted call, off without), and when a call is accepted during the ride (on, left
-     * as it is if already on). Each moment tries the Auto-Menü once; a call ending mid-ride
-     * leaves the siren on until the player gets out.
+     * Sets the siren at the moments it should change while seated: once after entering (on with
+     * an accepted call, off without), when a call is accepted during the ride (on, left as it is
+     * if already on), and when the last accepted call ends during the ride — reached, revived,
+     * rejected, released or withdrawn (off). Each moment tries the Auto-Menü once.
      */
     private static void manageSiren(Minecraft client, VehicleConfig cfg, boolean inDuty) {
         boolean hasCall = hasCallAcceptedByMe(client);
+        if (!isSirenManaged(cfg, inDuty)) {
+            hadCall = hasCall;
+            return;
+        }
+        // While a session runs, keep the change pending (hadCall untouched) so it isn't lost.
+        if (SirenMenu.isBusy()) return;
         boolean callAccepted = hasCall && !hadCall;
+        boolean callEnded = !hasCall && hadCall;
         hadCall = hasCall;
-        if (!isSirenManaged(cfg, inDuty) || SirenMenu.isBusy()) return;
 
         if (!sirenSynced) {
             // The gear drop takes the knob away for a moment; wait for the server to hand it back.
@@ -394,6 +400,9 @@ public final class VehicleAutomation {
         } else if (callAccepted && !Boolean.TRUE.equals(sirenState)) {
             GMMedic.LOGGER.info("[GM-Medic] Call accepted while seated — siren on");
             SirenMenu.request(client, true, result -> sirenState = result);
+        } else if (callEnded && !Boolean.FALSE.equals(sirenState)) {
+            GMMedic.LOGGER.info("[GM-Medic] Call done while seated — siren off");
+            SirenMenu.request(client, false, result -> sirenState = result);
         }
     }
 
