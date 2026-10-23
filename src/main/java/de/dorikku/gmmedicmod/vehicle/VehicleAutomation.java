@@ -7,6 +7,7 @@ import de.dorikku.gmmedicmod.mixin.BossBarHudAccessor;
 import de.dorikku.gmmedicmod.model.EmergencyCall;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import java.util.Locale;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.LerpingBossEvent;
 import net.minecraft.client.player.LocalPlayer;
@@ -21,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
  *   <li><b>Gear</b> — drops the item the server places in hand after sitting, which sets the gear shift.</li>
  *   <li><b>Siren</b> — toggles {@code /vehicles sirene} so it is on while an active call exists.</li>
  *   <li><b>Exit</b> — when leaving via sneak, turns the siren off first and delays the dismount.</li>
+ *   <li><b>Camera</b> — switches to third person while seated and back to the previous view on exit.</li>
  * </ul>
  *
  * <p>Driven by {@code ClientTickEvents.START_CLIENT_TICK} so the sneak-suppression flag is set
@@ -52,6 +54,8 @@ public final class VehicleAutomation {
     private static boolean forceSneak = false;
     private static int dismountDelayTicks = 0;
     private static long mountTimeMs = 0L;
+    /** View the player had before the mod switched to third person; null when the mod changed nothing. */
+    private static CameraType cameraBeforeMount = null;
 
     private VehicleAutomation() {}
 
@@ -91,6 +95,7 @@ public final class VehicleAutomation {
 
     public static void tick(Minecraft client) {
         if (client.player == null || !ApiConnection.getInstance().isFeatureUnlocked()) {
+            restoreCamera(client);
             reset();
             return;
         }
@@ -100,6 +105,7 @@ public final class VehicleAutomation {
         if (riding && !wasRiding) {
             onMount(client, player);
         } else if (!riding && wasRiding) {
+            restoreCamera(client);
             onDismount();
         }
         wasRiding = riding;
@@ -138,6 +144,26 @@ public final class VehicleAutomation {
         forceSneak = false;
         dismountDelayTicks = 0;
         mountTimeMs = System.currentTimeMillis();
+
+        // Only leave first person; a player already in a third-person view keeps theirs.
+        if (VehicleConfig.getInstance().isThirdPersonEnabled() && client.options.getCameraType().isFirstPerson()) {
+            cameraBeforeMount = client.options.getCameraType();
+            client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            GMMedic.LOGGER.info("[GM-Medic] Entered vehicle — switched to third person");
+        }
+    }
+
+    /**
+     * Puts back the view the player had before mounting. Skipped if they changed the view
+     * themselves while seated (e.g. F5 to the front view), so a deliberate choice is kept.
+     */
+    private static void restoreCamera(Minecraft client) {
+        if (cameraBeforeMount == null) return;
+        if (client.options.getCameraType() == CameraType.THIRD_PERSON_BACK) {
+            client.options.setCameraType(cameraBeforeMount);
+            GMMedic.LOGGER.info("[GM-Medic] Left vehicle — restored previous camera view");
+        }
+        cameraBeforeMount = null;
     }
 
     /**

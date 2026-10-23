@@ -32,9 +32,12 @@ you can focus on the response.
   - **Siren** — toggle `/vehicles sirene` on while you have an accepted call.
   - **Sneak-exit** — turn the siren off first and briefly delay your dismount when you
     sneak out (configurable delay). Helicopters are detected and skipped.
+  - **Third person** — switch to the third-person view while seated and back to your
+    previous view when you get out. Off by default; works on and off duty. If you
+    change the view yourself while seated, it is left alone on exit.
 
-  Each feature can be toggled, and set to run **always** (even off duty), from the
-  settings menu (`/gmmenu`).
+  Each feature can be toggled from the settings menu (`/gmmenu`); motor, gear and siren
+  can also be set to run **always** (even off duty).
 - **Bank alarm broadcast** — when the D-Funk (Ⓓ channel) reports
   `Der Alarm der <Bank> wurde ausgelöst`, the alarm is sent to the API server, which
   pushes it to every connected client that is **not on duty**. Those clients get a
