@@ -29,6 +29,13 @@ public class VehicleSettingsScreen extends AbstractGMMedicScreen {
         y = addFeatureRow(x, y, halfWidth, gap, "Sirene", cfg.isSirenEnabled(), cfg.isSirenAlways(),
                 VehicleConfig::setSirenEnabled, VehicleConfig::setSirenAlways);
 
+        this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isThirdPersonEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Third-Person im Fahrzeug"),
+                                (btn, value) -> VehicleConfig.getInstance().setThirdPersonEnabled(value))
+        );
+        y += ROW_SPACING;
+
         addStepper(x, y, "Ausstiegs-Verzögerung",
                 () -> VehicleConfig.getInstance().getExitDelayTicks(),
                 value -> VehicleConfig.getInstance().setExitDelayTicks(value),
