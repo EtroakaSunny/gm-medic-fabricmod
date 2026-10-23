@@ -51,6 +51,10 @@ public class EmergencyCallHud {
     /** How long a new call shows the player's own distance while its chat block is hidden. */
     private static final long DISTANCE_SHOW_MS = 5_000L;
     private static final int DISTANCE_COLOR = 0xFF55FFFF;
+    /** Rolling text: pause at the start, then scroll at this speed with a gap before it repeats. */
+    private static final long SCROLL_PAUSE_MS = 1_500L;
+    private static final double SCROLL_PX_PER_MS = 0.03;
+    private static final int SCROLL_GAP_PX = 24;
     /** Half-period of the flashing background behind a call nobody has accepted yet. */
     private static final long FLASH_HALF_PERIOD_MS = 500L;
     private static final int FLASH_ECALL = 0x66FFAA00;
@@ -221,20 +225,18 @@ public class EmergencyCallHud {
             if (timerStr != null) {
                 int timerWidth = text.width(timerStr);
                 int availableForCaller = maxHeaderWidth - text.width(prefix + " ") - timerWidth;
-                if (!call.isPending()) {
-                    String callerTrunc = truncate(text, call.getCallerName(), availableForCaller);
-                    prefix = prefix + " " + callerTrunc;
-                }
                 ctx.text(text, prefix, x, y, typeColor, true);
+                if (!call.isPending()) {
+                    drawFitted(ctx, text, call.getCallerName(), x + text.width(prefix + " "), y, availableForCaller, typeColor, "..");
+                }
                 int timerX = x + panelWidth - padding * 2 - timerWidth;
                 ctx.text(text, timerStr.trim(), timerX, y, timerColor, true);
             } else {
+                ctx.text(text, prefix, x, y, typeColor, true);
                 if (!call.isPending()) {
                     int availableForCaller = maxHeaderWidth - text.width(prefix + " ");
-                    String callerTrunc = truncate(text, call.getCallerName(), availableForCaller);
-                    prefix = prefix + " " + callerTrunc;
+                    drawFitted(ctx, text, call.getCallerName(), x + text.width(prefix + " "), y, availableForCaller, typeColor, "..");
                 }
-                ctx.text(text, prefix, x, y, typeColor, true);
             }
         } else {
             String callHeader = "#" + index + " " + typeLabel;
@@ -260,8 +262,7 @@ public class EmergencyCallHud {
                 ctx.text(text, "⚠ Fehler", x + indent, y, ENTANGLED_COLOR, true);
                 y += lineHeight;
             }
-            String reasonLine = truncateSuffix(text, call.getReason(), maxWidth, "..");
-            ctx.text(text, reasonLine, x + indent, y, infoColor, true);
+            drawFitted(ctx, text, call.getReason(), x + indent, y, maxWidth, infoColor, "..");
             y += lineHeight;
 
             String distance = distanceLine(call);
@@ -301,14 +302,10 @@ public class EmergencyCallHud {
             y += lineHeight;
 
         } else {
-            ctx.text(text, "Anrufer: " + call.getCallerName(), x + indent, y, infoColor, true);
+            drawFitted(ctx, text, "Anrufer: " + call.getCallerName(), x + indent, y, maxWidth, infoColor, "...");
             y += lineHeight;
 
-            String reasonLine = "Grund: " + call.getReason();
-            if (text.width(reasonLine) > maxWidth) {
-                reasonLine = truncateSuffix(text, reasonLine, maxWidth, "...");
-            }
-            ctx.text(text, reasonLine, x + indent, y, infoColor, true);
+            drawFitted(ctx, text, "Grund: " + call.getReason(), x + indent, y, maxWidth, infoColor, "...");
             y += lineHeight;
 
             String locName = call.getLocationName();
@@ -320,7 +317,7 @@ public class EmergencyCallHud {
             } else {
                 locLine = "Ort: " + String.format("X:%.0f Y:%.0f Z:%.0f", call.getX(), call.getY(), call.getZ());
             }
-            ctx.text(text, locLine, x + indent, y, infoColor, true);
+            drawFitted(ctx, text, locLine, x + indent, y, maxWidth, infoColor, "...");
             y += lineHeight;
 
             if (isEntangled) {
@@ -345,12 +342,12 @@ public class EmergencyCallHud {
                 if (call.getRejectedBy() != null && !call.getRejectedBy().isEmpty()) {
                     line += " von " + call.getRejectedBy();
                 }
-                ctx.text(text, line, x + indent, y, REJECTED_COLOR, true);
+                drawFitted(ctx, text, line, x + indent, y, maxWidth, REJECTED_COLOR, "...");
                 y += lineHeight;
             }
 
             if (!isResolved && !isRejected && call.isAccepted()) {
-                ctx.text(text, "Medic: " + call.getAssignedMedic(), x + indent, y, MEDIC_COLOR, true);
+                drawFitted(ctx, text, "Medic: " + call.getAssignedMedic(), x + indent, y, maxWidth, MEDIC_COLOR, "...");
                 y += lineHeight;
             }
         }
@@ -392,12 +389,31 @@ public class EmergencyCallHud {
         return String.format("📍 %d m entfernt", Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz)));
     }
 
-    private static String truncate(Font text, String str, int maxWidth) {
-        if (text.width(str) <= maxWidth) return str;
-        while (text.width(str + "..") > maxWidth && str.length() > 1) {
-            str = str.substring(0, str.length() - 1);
+    /**
+     * Draws {@code str} in the {@code maxWidth} pixels from {@code x}: as it is when it fits,
+     * otherwise as rolling text clipped to that area (HUD setting "Lauftext"), or cut off with
+     * {@code suffix} when rolling text is off.
+     */
+    private static void drawFitted(GuiGraphicsExtractor ctx, Font font, String str, int x, int y,
+                                   int maxWidth, int color, String suffix) {
+        if (str == null) str = "";
+        int width = font.width(str);
+        if (width <= maxWidth || maxWidth <= 0) {
+            ctx.text(font, str, x, y, color, true);
+            return;
         }
-        return str + "..";
+        if (!HudConfig.getInstance().isScrollingTextEnabled()) {
+            ctx.text(font, truncateSuffix(font, str, maxWidth, suffix), x, y, color, true);
+            return;
+        }
+        int cycle = width + SCROLL_GAP_PX;
+        long period = SCROLL_PAUSE_MS + (long) (cycle / SCROLL_PX_PER_MS);
+        long t = System.currentTimeMillis() % period;
+        int offset = t < SCROLL_PAUSE_MS ? 0 : (int) ((t - SCROLL_PAUSE_MS) * SCROLL_PX_PER_MS);
+        ctx.enableScissor(x, y - 1, x + maxWidth, y + font.lineHeight + 1);
+        ctx.text(font, str, x - offset, y, color, true);
+        ctx.text(font, str, x - offset + cycle, y, color, true);
+        ctx.disableScissor();
     }
 
     private static String truncateSuffix(Font text, String str, int maxWidth, String suffix) {

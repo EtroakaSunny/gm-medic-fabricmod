@@ -29,6 +29,13 @@ public class HudSettingsScreen extends AbstractGMMedicScreen {
         y += ROW_SPACING;
 
         this.addRenderableWidget(
+                CycleButton.onOffBuilder(cfg.isScrollingTextEnabled())
+                        .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Lauftext bei langem Text"),
+                                (btn, value) -> HudConfig.getInstance().setScrollingTextEnabled(value))
+        );
+        y += ROW_SPACING;
+
+        this.addRenderableWidget(
                 CycleButton.onOffBuilder(cfg.isHighlightEnabled())
                         .create(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, Component.literal("Spieler-Highlight"),
                                 (btn, value) -> HudConfig.getInstance().setHighlightEnabled(value))

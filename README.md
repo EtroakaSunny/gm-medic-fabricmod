@@ -14,7 +14,9 @@ you can focus on the response.
 
 - **Emergency call HUD** — an on-screen list of all active emergency calls (*Notrufe*)
   and death reports (*Todesmeldungen*), including caller, reason and assignment state.
-  Supports a **compact** layout for large GUI scales.
+  Supports a **compact** layout for large GUI scales. Text too long for its line
+  (caller, reason, location, medic) scrolls instead of being cut off — HUD setting
+  *Lauftext bei langem Text*, on by default.
 - **Clickable Notrufe** (optional, HUD settings → *Klickbare Notrufe*) — the panel takes
   over the transmission's chat buttons. Calls nobody has accepted yet flash. With the
   chat open, a left click on an open call accepts it (*ANNEHMEN*); a right click — or a
