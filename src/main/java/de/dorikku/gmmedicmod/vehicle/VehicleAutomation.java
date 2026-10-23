@@ -46,7 +46,9 @@ public final class VehicleAutomation {
     /** Overall safety cap on the whole gear-detection window. */
     private static final long GEAR_DETECT_WINDOW_MS = 12_000L;
     /** A sneak exit never waits longer than this for the siren to be switched off. */
-    private static final long EXIT_SIREN_MAX_WAIT_MS = 4_000L;
+    private static final long EXIT_SIREN_MAX_WAIT_MS = 2_500L;
+    /** After the gear drop the knob is briefly gone; the first siren setting waits this long for it. */
+    private static final long KNOB_RETURN_WAIT_MS = 10_000L;
 
     private static boolean wasRiding = false;
     private static boolean motorStarted = false;
@@ -63,6 +65,8 @@ public final class VehicleAutomation {
     private static boolean exitWaitingForSiren = false;
     private static boolean exitSirenRequested = false;
     private static long exitStartMs = 0L;
+    /** When the first siren setting of this ride started waiting for the knob; 0 = not yet. */
+    private static long knobWaitStartMs = 0L;
     private static boolean exitInProgress = false;
     private static boolean suppressSneak = false;
     private static boolean forceSneak = false;
@@ -157,6 +161,7 @@ public final class VehicleAutomation {
         hadCall = false;
         exitWaitingForSiren = false;
         exitSirenRequested = false;
+        knobWaitStartMs = 0L;
         exitInProgress = false;
         suppressSneak = false;
         forceSneak = false;
@@ -213,6 +218,7 @@ public final class VehicleAutomation {
         hadCall = false;
         exitWaitingForSiren = false;
         exitSirenRequested = false;
+        knobWaitStartMs = 0L;
     }
 
     /**
@@ -378,6 +384,9 @@ public final class VehicleAutomation {
         if (!isSirenManaged(cfg, inDuty) || SirenMenu.isBusy()) return;
 
         if (!sirenSynced) {
+            // The gear drop takes the knob away for a moment; wait for the server to hand it back.
+            if (knobWaitStartMs == 0L) knobWaitStartMs = System.currentTimeMillis();
+            if (!SirenMenu.hasKnob(client) && System.currentTimeMillis() - knobWaitStartMs < KNOB_RETURN_WAIT_MS) return;
             sirenSynced = true;
             GMMedic.LOGGER.info("[GM-Medic] Entered vehicle {} an accepted call — siren {}",
                     hasCall ? "with" : "without", hasCall ? "on" : "off");

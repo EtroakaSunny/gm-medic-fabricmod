@@ -29,18 +29,21 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class SirenMenu {
 
-    private static final String MENU_TITLE = "Auto-Menü";
+    /** Compared letters-only and lower-cased, so prefixes, colours and "Auto Menü" still match. */
+    private static final String MENU_TITLE_KEY = "automenü";
     private static final String KNOB_ITEM_NAME = "Gangwahlhebel";
     private static final String SIREN_ON = "Sirene eingeschaltet";
     private static final String SIREN_OFF = "Sirene abgeschaltet";
     /** How long to wait for the server to open the menu after the F packet. */
-    private static final long OPEN_TIMEOUT_MS = 3_000L;
+    private static final long OPEN_TIMEOUT_MS = 1_500L;
+    /** Ticks between selecting the knob and pressing F, so the server sees it in hand first. */
+    private static final int SELECT_SETTLE_TICKS = 2;
     /** How long to wait for the head once the menu is open, and for it to flip after a click. */
     private static final long READ_TIMEOUT_MS = 2_000L;
     /** A menu arriving this late is still taken (and closed) so it never pops up on screen. */
     private static final long LATE_OPEN_GRACE_MS = 5_000L;
 
-    private enum Phase { IDLE, WAITING_FOR_MENU, OPEN, CLICKED }
+    private enum Phase { IDLE, SELECTING, WAITING_FOR_MENU, OPEN, CLICKED }
 
     private static Phase phase = Phase.IDLE;
     private static boolean wantOn;
@@ -49,6 +52,7 @@ public final class SirenMenu {
     private static int containerId = -1;
     private static AbstractContainerMenu menu;
     private static int restoreSlot = -1;
+    private static int settleTicks = 0;
     /** Until this time a late "Auto-Menü" from an abandoned session is swallowed too. */
     private static long swallowLateUntilMs = 0L;
 
@@ -56,6 +60,11 @@ public final class SirenMenu {
 
     public static boolean isBusy() {
         return phase != Phase.IDLE;
+    }
+
+    /** True while the knob the Auto-Menü needs is in the hotbar (it is gone for a moment after a gear drop). */
+    public static boolean hasKnob(Minecraft client) {
+        return client.player != null && findKnobSlot(client.player.getInventory()) >= 0;
     }
 
     /**
@@ -80,8 +89,15 @@ public final class SirenMenu {
         if (inv.getSelectedSlot() != knob) {
             restoreSlot = inv.getSelectedSlot();
             selectSlot(player, knob);
+            settleTicks = SELECT_SETTLE_TICKS;
+            enter(Phase.SELECTING);
+        } else {
+            pressSwapHands(player);
         }
-        // Exactly what the swap-hands key sends; the server answers with the Auto-Menü.
+    }
+
+    /** Exactly what the swap-hands key (F) sends; with the knob in hand the server answers with the Auto-Menü. */
+    private static void pressSwapHands(LocalPlayer player) {
         player.connection.send(new ServerboundPlayerActionPacket(
                 ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
         enter(Phase.WAITING_FOR_MENU);
@@ -93,7 +109,11 @@ public final class SirenMenu {
      */
     public static boolean interceptOpen(ClientboundOpenScreenPacket packet) {
         String title = packet.getTitle().getString().replaceAll("§.", "").trim();
-        if (!title.equalsIgnoreCase(MENU_TITLE)) return false;
+        if (phase != Phase.IDLE || System.currentTimeMillis() <= swallowLateUntilMs) {
+            // Logged while we expect the Auto-Menü, so a title that doesn't match can be seen.
+            GMMedic.LOGGER.info("[GM-Medic] Menu opened while waiting for the Auto-Menü: '{}'", title);
+        }
+        if (!isAutoMenuTitle(title)) return false;
         Minecraft client = Minecraft.getInstance();
         LocalPlayer player = client.player;
         if (player == null) return false;
@@ -133,6 +153,9 @@ public final class SirenMenu {
         long age = System.currentTimeMillis() - phaseStartMs;
 
         switch (phase) {
+            case SELECTING -> {
+                if (--settleTicks <= 0) pressSwapHands(player);
+            }
             case WAITING_FOR_MENU -> {
                 if (age > OPEN_TIMEOUT_MS) {
                     GMMedic.LOGGER.info("[GM-Medic] Auto-Menü didn't open — siren left as it is");
@@ -210,6 +233,10 @@ public final class SirenMenu {
             if (name.contains(SIREN_ON) || name.contains(SIREN_OFF)) return slot;
         }
         return null;
+    }
+
+    static boolean isAutoMenuTitle(String title) {
+        return title.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-zäöüß]", "").contains(MENU_TITLE_KEY);
     }
 
     private static boolean isOn(ItemStack stack) {
