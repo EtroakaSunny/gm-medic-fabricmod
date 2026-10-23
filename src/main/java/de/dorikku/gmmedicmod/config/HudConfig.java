@@ -48,6 +48,8 @@ public class HudConfig {
      * distance to it on the panel for its first seconds — the "Distanz" line they no longer see.
      */
     private boolean callDistanceEnabled = true;
+    /** Text too long for its line on the Notrufe panel scrolls instead of being cut off with "..". */
+    private boolean scrollingTextEnabled = true;
     /**
      * Whether the green "may donate" chat note is shown — posted under a player's own chat/funk
      * line when they mention "Blut", and under an emergency call once the caller's status is
@@ -110,6 +112,8 @@ public class HudConfig {
                         clickableCallsEnabled = Boolean.parseBoolean(line.substring("clickableCallsEnabled=".length()).trim());
                     } else if (line.startsWith("hideCallChatEnabled=")) {
                         hideCallChatEnabled = Boolean.parseBoolean(line.substring("hideCallChatEnabled=".length()).trim());
+                    } else if (line.startsWith("scrollingTextEnabled=")) {
+                        scrollingTextEnabled = Boolean.parseBoolean(line.substring("scrollingTextEnabled=".length()).trim());
                     } else if (line.startsWith("callDistanceEnabled=")) {
                         callDistanceEnabled = Boolean.parseBoolean(line.substring("callDistanceEnabled=".length()).trim());
                     } else if (line.startsWith("callTimerEnabled=")) {
@@ -180,6 +184,8 @@ public class HudConfig {
                     "hideCallChatEnabled=" + hideCallChatEnabled + "\n" +
                     "# While the blocks are hidden, show your own distance to a new call for its first 5s\n" +
                     "callDistanceEnabled=" + callDistanceEnabled + "\n" +
+                    "# Scroll text that doesn't fit its line on the Notrufe panel instead of cutting it off\n" +
+                    "scrollingTextEnabled=" + scrollingTextEnabled + "\n" +
                     "# Show the green chat note when a player who mentioned \"Blut\" (or an emergency\n" +
                     "# call's caller) may donate blood again\n" +
                     "bloodChatNoteCanDonateEnabled=" + bloodChatNoteCanDonateEnabled + "\n" +
@@ -228,6 +234,15 @@ public class HudConfig {
 
     public void setCallDistanceEnabled(boolean enabled) {
         callDistanceEnabled = enabled;
+        save();
+    }
+
+    public boolean isScrollingTextEnabled() {
+        return scrollingTextEnabled;
+    }
+
+    public void setScrollingTextEnabled(boolean enabled) {
+        scrollingTextEnabled = enabled;
         save();
     }
 
