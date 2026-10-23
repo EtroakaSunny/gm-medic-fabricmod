@@ -40,8 +40,11 @@ public final class SirenMenu {
     private static final int SELECT_SETTLE_TICKS = 2;
     /** How long to wait for the head once the menu is open, and for it to flip after a click. */
     private static final long READ_TIMEOUT_MS = 2_000L;
-    /** A menu arriving this late is still taken (and closed) so it never pops up on screen. */
-    private static final long LATE_OPEN_GRACE_MS = 5_000L;
+    /**
+     * After a session every further Auto-Menü is closed unseen for this long: the server reopens
+     * the menu after a click to show the flipped head, and that copy can arrive after we're done.
+     */
+    private static final long LATE_OPEN_GRACE_MS = 3_000L;
 
     private enum Phase { IDLE, SELECTING, WAITING_FOR_MENU, OPEN, CLICKED }
 
@@ -118,18 +121,21 @@ public final class SirenMenu {
         LocalPlayer player = client.player;
         if (player == null) return false;
 
-        if (phase != Phase.WAITING_FOR_MENU) {
+        if (phase == Phase.IDLE || phase == Phase.SELECTING) {
             if (System.currentTimeMillis() > swallowLateUntilMs) return false;
-            // Our own request, arriving after we stopped waiting: close it unseen.
+            // A copy of our own menu (the reopen after a click, or one we stopped waiting for)
+            // arriving after the session: close it unseen.
             player.connection.send(new ServerboundContainerClosePacket(packet.getContainerId()));
             GMMedic.LOGGER.info("[GM-Medic] Closed a late Auto-Menü unseen");
             return true;
         }
+        // WAITING_FOR_MENU: the menu we asked for. OPEN/CLICKED: the server reopened it (after the
+        // click, to show the flipped head) — follow the new copy and read the head from it.
         containerId = packet.getContainerId();
         menu = packet.getType().create(containerId, player.getInventory());
         // Content and slot packets for this id now land in this menu instead of a screen.
         player.containerMenu = menu;
-        enter(Phase.OPEN);
+        if (phase == Phase.WAITING_FOR_MENU) enter(Phase.OPEN);
         return true;
     }
 
@@ -138,8 +144,14 @@ public final class SirenMenu {
         if (menu == null || id != containerId) return false;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) player.containerMenu = player.inventoryMenu;
-        // A click that made the server close the menu has done its job.
-        finish(phase == Phase.CLICKED ? wantOn : null, false);
+        menu = null;
+        containerId = -1;
+        if (phase == Phase.CLICKED) {
+            // Closing after the click usually means the server is about to reopen the menu with
+            // the flipped head; tick() follows that copy or, if none comes, ends the session.
+            return true;
+        }
+        finish(null, false);
         return true;
     }
 
@@ -159,7 +171,6 @@ public final class SirenMenu {
             case WAITING_FOR_MENU -> {
                 if (age > OPEN_TIMEOUT_MS) {
                     GMMedic.LOGGER.info("[GM-Medic] Auto-Menü didn't open — siren left as it is");
-                    swallowLateUntilMs = System.currentTimeMillis() + LATE_OPEN_GRACE_MS;
                     finish(null, false);
                 }
             }
@@ -214,6 +225,7 @@ public final class SirenMenu {
         }
         Consumer<Boolean> done = onDone;
         reset();
+        swallowLateUntilMs = System.currentTimeMillis() + LATE_OPEN_GRACE_MS;
         GMMedic.LOGGER.info("[GM-Medic] Siren via Auto-Menü: {}", result == null ? "unknown" : (result ? "on" : "off"));
         if (done != null) done.accept(result);
     }
