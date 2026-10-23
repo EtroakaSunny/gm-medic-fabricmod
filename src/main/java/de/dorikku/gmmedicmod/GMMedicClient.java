@@ -26,6 +26,7 @@ import de.dorikku.gmmedicmod.network.ApiConnection;
 import de.dorikku.gmmedicmod.network.UpdateNotifier;
 import de.dorikku.gmmedicmod.render.BloodTargetHighlightRenderer;
 import de.dorikku.gmmedicmod.render.CallTargetHighlightRenderer;
+import de.dorikku.gmmedicmod.vehicle.SirenMenu;
 import de.dorikku.gmmedicmod.vehicle.VehicleAutomation;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -67,6 +68,7 @@ public class GMMedicClient implements ClientModInitializer {
         MicroscopeConfig.getInstance(); // pre-load microscope checklist config
 
         ClientTickEvents.START_CLIENT_TICK.register(VehicleAutomation::tick);
+        ClientTickEvents.START_CLIENT_TICK.register(SirenMenu::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodDrawAssistant::tick);
         ClientTickEvents.START_CLIENT_TICK.register(BloodChatNoteHandler::tick);
         ClientTickEvents.START_CLIENT_TICK.register(CallArrivalCountdown::tick);
@@ -121,6 +123,7 @@ public class GMMedicClient implements ClientModInitializer {
             CallActions.clear();
             CallChatFilter.clear();
             CallRejectPrompt.clear();
+            SirenMenu.reset();
             AlarmManager.getInstance().clear();
             BloodDonationManager.getInstance().clear();
             BloodChatNoteHandler.clear();

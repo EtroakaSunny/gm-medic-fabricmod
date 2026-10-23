@@ -112,11 +112,11 @@ public class VehicleConfig {
             + this.gearEnabled
             + "\ngearAlways="
             + this.gearAlways
-            + "\n# Auto-toggle the siren (/vehicles sirene) while you have an active call\nsirenEnabled="
+            + "\n# Set the siren through the Auto-Menü: on with an accepted call, off without (entering/leaving)\nsirenEnabled="
             + this.sirenEnabled
             + "\nsirenAlways="
             + this.sirenAlways
-            + "\n# Ticks to delay a sneak dismount so the siren turns off first (20 ticks = 1s)\nexitDelayTicks="
+            + "\n# Extra ticks to hold a sneak dismount after the siren was switched off (20 ticks = 1s)\nexitDelayTicks="
             + this.exitDelayTicks
             + "\n# Switch to third person while riding a vehicle, back to the previous view when leaving\nthirdPersonEnabled="
             + this.thirdPersonEnabled
