@@ -169,6 +169,8 @@ public class EmergencyCallHud {
                 drawContext.fill(panelX + padding + divInset, currentY - 2, panelX + panelWidth - padding - divInset, currentY - 1, 0xFF333333);
             }
         }
+
+        if (clickable) CallHudInteraction.renderHover(drawContext);
     }
 
     private static int drawCallEntry(GuiGraphicsExtractor ctx, Font text, EmergencyCall call, int panelX, int y, int panelWidth, int index, boolean showCoords, boolean compact, int padding, int lineHeight) {

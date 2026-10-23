@@ -11,8 +11,6 @@ import de.dorikku.gmmedicmod.network.ApiConnection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -25,6 +23,10 @@ import net.minecraft.network.chat.Component;
  * in game. A left click on an open call accepts it (the transmission's ANNEHMEN button); a right
  * click, or any click on a call that is no longer open (e.g. your own accepted one), opens
  * {@link CallActionScreen} with all of that call's buttons.
+ *
+ * <p>Fed straight from the mouse handler ({@code MouseHandlerMixin}) and drawn by the panel
+ * itself, not through Fabric's screen events: LabyMod routes mouse input around those, so with
+ * it installed they never fire for the chat.</p>
  */
 public final class CallHudInteraction {
 
@@ -32,14 +34,36 @@ public final class CallHudInteraction {
 
     private CallHudInteraction() {}
 
-    public static void register() {
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            if (!(screen instanceof ChatScreen)) return;
-            ScreenEvents.afterExtract(screen).register(
-                    (s, graphics, mouseX, mouseY, tickProgress) -> renderHover(graphics, mouseX, mouseY));
-            ScreenMouseEvents.allowMouseClick(screen).register(
-                    (s, event) -> !handleClick(s, event.x(), event.y(), event.button()));
-        });
+    /**
+     * The open chat screen, or null when the chat is closed (no cursor to click with). Asked via
+     * {@code ChatComponent.isChatFocused()} besides vanilla's {@link ChatScreen}: LabyMod shows
+     * its own chat input inside a wrapper screen ({@code LabyScreenRenderer}) and reports it as
+     * focused through exactly that method.
+     */
+    private static Screen openChat(Minecraft client) {
+        Screen screen = client.gui.screen();
+        if (screen == null) return null;
+        if (screen instanceof ChatScreen || client.gui.hud.getChat().isChatFocused()) return screen;
+        return null;
+    }
+
+    /** A mouse press anywhere in the game; returns true when the panel used it. */
+    public static boolean onMousePress(int button) {
+        Minecraft client = Minecraft.getInstance();
+        Screen chat = openChat(client);
+        if (chat == null) return false;
+        double x = client.mouseHandler.getScaledXPos(client.getWindow());
+        double y = client.mouseHandler.getScaledYPos(client.getWindow());
+        return handleClick(chat, x, y, button);
+    }
+
+    /** Called by the panel after drawing: outlines the call under the cursor while the chat is open. */
+    public static void renderHover(GuiGraphicsExtractor graphics) {
+        Minecraft client = Minecraft.getInstance();
+        if (openChat(client) == null) return;
+        int x = (int) client.mouseHandler.getScaledXPos(client.getWindow());
+        int y = (int) client.mouseHandler.getScaledYPos(client.getWindow());
+        renderHover(graphics, x, y);
     }
 
     private static boolean isEnabled() {

@@ -8,7 +8,8 @@
 		"ChatHudMixin",
 		"ClientPlayNetworkHandlerMixin",
 		"KeyboardInputMixin",
-		"MessageHandlerMixin"
+		"MessageHandlerMixin",
+		"MouseHandlerMixin"
 	],
 	"mixins": [
 	],
