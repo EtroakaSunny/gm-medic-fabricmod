@@ -48,6 +48,9 @@ public class EmergencyCallHud {
     private static final int TIMER_FLASH  = 0xFFFF5555;
 
     private static final long LOCATION_TOGGLE_MS = 7_000L;
+    /** How long a new call shows the player's own distance while its chat block is hidden. */
+    private static final long DISTANCE_SHOW_MS = 5_000L;
+    private static final int DISTANCE_COLOR = 0xFF55FFFF;
     /** Half-period of the flashing background behind a call nobody has accepted yet. */
     private static final long FLASH_HALF_PERIOD_MS = 500L;
     private static final int FLASH_ECALL = 0x66FFAA00;
@@ -261,6 +264,12 @@ public class EmergencyCallHud {
             ctx.text(text, reasonLine, x + indent, y, infoColor, true);
             y += lineHeight;
 
+            String distance = distanceLine(call);
+            if (distance != null) {
+                ctx.text(text, distance, x + indent, y, DISTANCE_COLOR, true);
+                y += lineHeight;
+            }
+
             String locLine = call.hasKnownLocation()
                     ? String.format("%.0f %.0f %.0f", call.getX(), call.getY(), call.getZ())
                     : "Unbekannt";
@@ -319,6 +328,12 @@ public class EmergencyCallHud {
                 y += lineHeight;
             }
 
+            String distance = distanceLine(call);
+            if (distance != null) {
+                ctx.text(text, distance, x + indent, y, DISTANCE_COLOR, true);
+                y += lineHeight;
+            }
+
             if (isResolved) {
                 String resolvedLabel = call.getResolvedReason() != null ? call.getResolvedReason() : "Erledigt";
                 ctx.text(text, "✔ " + resolvedLabel, x + indent, y, RESOLVED_LABEL, true);
@@ -348,14 +363,33 @@ public class EmergencyCallHud {
         if (compact) {
             int lines = 3;
             if (call.isEntangled()) lines++;
+            if (distanceLine(call) != null) lines++;
             return lines * lineHeight;
         } else {
             int lines = 4;
             if (call.isEntangled()) lines++;
+            if (distanceLine(call) != null) lines++;
             if (call.isResolved()) lines++;
             else if (call.isRejected() || call.isAccepted()) lines++;
             return lines * lineHeight;
         }
+    }
+
+    /**
+     * "📍 1234 m entfernt" for the first seconds of a call while its chat block — and with it the
+     * server's "Distanz" line — is hidden; null otherwise or when the location is unknown.
+     */
+    private static String distanceLine(EmergencyCall call) {
+        HudConfig cfg = HudConfig.getInstance();
+        if (!cfg.isCallDistanceEnabled() || !cfg.isClickableCallsEnabled() || !cfg.isHideCallChatEnabled()) return null;
+        if (call.isPending() || !call.hasKnownLocation()) return null;
+        if (System.currentTimeMillis() - call.getCreationTime() > DISTANCE_SHOW_MS) return null;
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return null;
+        double dx = client.player.getX() - call.getX();
+        double dy = client.player.getY() - call.getY();
+        double dz = client.player.getZ() - call.getZ();
+        return String.format("📍 %d m entfernt", Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz)));
     }
 
     private static String truncate(Font text, String str, int maxWidth) {
