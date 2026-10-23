@@ -301,6 +301,11 @@ public class EmergencyCallManager {
         return state;
     }
 
+    /** The call currently being filled from a transmission block, or null when idle. */
+    public EmergencyCall getPendingCall() {
+        return pendingCall;
+    }
+
     public boolean hasPendingCallerName() {
         return pendingCall != null
                 && pendingCall.getCallerName() != null

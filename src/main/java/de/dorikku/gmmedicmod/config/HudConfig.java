@@ -32,6 +32,18 @@ public class HudConfig {
      */
     private boolean callTimerEnabled = true;
     /**
+     * Whether the Notrufe panel takes over the transmission's chat buttons (ANNEHMEN, ANRUFEN,
+     * MELDEN, ZURÜCKWEISEN, FREIGEBEN): open calls flash until accepted and can be clicked while
+     * the chat is open. Off by default — the chat buttons keep working either way.
+     */
+    private boolean clickableCallsEnabled = false;
+    /**
+     * Whether the transmission blocks are kept out of the chat while {@link #clickableCallsEnabled}
+     * is on. They are still parsed and reported to the API server; a block whose data collided
+     * with another one is shown after all so nothing is lost.
+     */
+    private boolean hideCallChatEnabled = false;
+    /**
      * Whether the green "may donate" chat note is shown — posted under a player's own chat/funk
      * line when they mention "Blut", and under an emergency call once the caller's status is
      * known. Independent of {@link #bloodChatNoteCannotDonateEnabled} so a medic can silence
@@ -89,6 +101,10 @@ public class HudConfig {
                         bloodDisplayEnabled = Boolean.parseBoolean(line.substring("bloodDisplayEnabled=".length()).trim());
                     } else if (line.startsWith("bloodDrawMessageEnabled=")) {
                         bloodDrawMessageEnabled = Boolean.parseBoolean(line.substring("bloodDrawMessageEnabled=".length()).trim());
+                    } else if (line.startsWith("clickableCallsEnabled=")) {
+                        clickableCallsEnabled = Boolean.parseBoolean(line.substring("clickableCallsEnabled=".length()).trim());
+                    } else if (line.startsWith("hideCallChatEnabled=")) {
+                        hideCallChatEnabled = Boolean.parseBoolean(line.substring("hideCallChatEnabled=".length()).trim());
                     } else if (line.startsWith("callTimerEnabled=")) {
                         callTimerEnabled = Boolean.parseBoolean(line.substring("callTimerEnabled=".length()).trim());
                     } else if (line.startsWith("bloodChatNoteCanDonateEnabled=")) {
@@ -149,6 +165,12 @@ public class HudConfig {
                     "# Show the short countdown above the hotbar when a call's transmission arrives.\n" +
                     "# The call is tracked and shown in the HUD either way\n" +
                     "callTimerEnabled=" + callTimerEnabled + "\n" +
+                    "# Clickable Notrufe panel: open calls flash, a click (with the chat open) accepts,\n" +
+                    "# right-click or a click on your own call opens all of the call's actions\n" +
+                    "clickableCallsEnabled=" + clickableCallsEnabled + "\n" +
+                    "# Keep the transmission blocks out of the chat while the panel is clickable\n" +
+                    "# (still parsed and reported; shown after all when two transmissions collided)\n" +
+                    "hideCallChatEnabled=" + hideCallChatEnabled + "\n" +
                     "# Show the green chat note when a player who mentioned \"Blut\" (or an emergency\n" +
                     "# call's caller) may donate blood again\n" +
                     "bloodChatNoteCanDonateEnabled=" + bloodChatNoteCanDonateEnabled + "\n" +
@@ -171,6 +193,24 @@ public class HudConfig {
         } catch (Exception e) {
             GMMedic.LOGGER.warn("[HudConfig] Failed to save config", e);
         }
+    }
+
+    public boolean isClickableCallsEnabled() {
+        return clickableCallsEnabled;
+    }
+
+    public void setClickableCallsEnabled(boolean enabled) {
+        clickableCallsEnabled = enabled;
+        save();
+    }
+
+    public boolean isHideCallChatEnabled() {
+        return hideCallChatEnabled;
+    }
+
+    public void setHideCallChatEnabled(boolean enabled) {
+        hideCallChatEnabled = enabled;
+        save();
     }
 
     public boolean isCompactMode() {

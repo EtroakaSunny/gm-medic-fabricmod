@@ -12,7 +12,9 @@ import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.multiplayer.chat.ChatListener;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.DyeColor;
@@ -217,6 +219,17 @@ public class DebugCommands {
                 )
 
                 // /gm testduty
+                // Target of the clickable buttons under /gm testcall and /gm testdeath: plays what
+                // the real server answers to each button, so the clickable Notrufe panel can be
+                // tried end to end without the server.
+                .then(ClientCommands.literal("simbutton")
+                        .then(ClientCommands.argument("label", StringArgumentType.word())
+                                .then(ClientCommands.argument("type", StringArgumentType.word())
+                                        .then(ClientCommands.argument("name", StringArgumentType.word())
+                                                .executes(ctx -> simulateButton(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "label"),
+                                                        "death".equals(StringArgumentType.getString(ctx, "type")),
+                                                        StringArgumentType.getString(ctx, "name")))))))
                 .then(ClientCommands.literal("testduty")
                         .executes(ctx -> {
                             FabricClientCommandSource src = ctx.getSource();
@@ -420,7 +433,7 @@ public class DebugCommands {
 
         src.sendFeedback(Component.literal("\u00a77Simuliere DATEN\u00dcBERMITTLUNG (Tod) f\u00fcr: \u00a7f" + name));
 
-        simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r[FUNK] ZENTRALE \u00bb Wir haben einen neuen Notruf erhalten - ich schicke euch die Daten r\u00fcber!");
+        simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r[FUNK] ZENTRALE \u00bb Wir haben eine neue Todesmeldung erhalten - ich schicke euch die Daten r\u00fcber!");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r  ----- DATEN\u00dcBERMITTLUNG VON ZENTRALE -----");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r - Betroffener: " + name);
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r - Verbleibende Zeit: 4 Minuten, 58 Sekunden");
@@ -429,7 +442,7 @@ public class DebugCommands {
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r\u00a7e - Ortung: \u00a7f\u00a7fX: -1488 Y: 63 Z: -2095 (Offenbach Nord)");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r - Auf dem Weg: Niemand!");
         simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r");
-        simulateChatMessage("\u00a7e\u2503 \u00a7616:24:08 \u00a78\u00bb \u00a7r  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
+        simulateChatMessage(buttonLine(name, true, false));
 
         src.sendFeedback(Component.literal("\u00a7a\u2714 Simulation abgeschlossen."));
         return 1;
@@ -456,7 +469,7 @@ public class DebugCommands {
         simulateChatMessage("\u00a7e - Ortung: \u00a7f\u00a7fX: -1332 Y: 82 Z: -550 (S\u00fcdlicher Gebirgszug)");
         simulateChatMessage(" - Auf dem Weg: Niemand!");
         simulateChatMessage("");
-        simulateChatMessage("  \u00a7aANNEHMEN      \u00a7eANRUFEN      \u00a7cMELDEN      \u00a74ZUR\u00dcCKWEISEN");
+        simulateChatMessage(buttonLine(name, false, false));
 
         src.sendFeedback(Component.literal("\u00a7a\u2714 Simulation abgeschlossen."));
         return 1;
@@ -512,10 +525,65 @@ public class DebugCommands {
     private static final Random RANDOM = new Random();
 
     /**
+     * The transmission's button line with real click events, like the server sends it: ANNEHMEN
+     * for a Todesmeldung (plus FREIGEBEN once accepted), all four buttons for a Notruf. Each
+     * button runs {@code /gm simbutton}, which plays the server's answer.
+     */
+    private static Component buttonLine(String name, boolean death, boolean accepted) {
+        String type = death ? "death" : "ecall";
+        MutableComponent line = Component.literal("  ");
+        List<String[]> buttons = death
+                ? (accepted ? List.of(new String[]{"ANNEHMEN", "\u00a7a"}, new String[]{"FREIGEBEN", "\u00a7b"})
+                            : List.<String[]>of(new String[]{"ANNEHMEN", "\u00a7a"}))
+                : List.of(new String[]{"ANNEHMEN", "\u00a7a"}, new String[]{"ANRUFEN", "\u00a7e"},
+                          new String[]{"MELDEN", "\u00a7c"}, new String[]{"ZUR\u00dcCKWEISEN", "\u00a74"});
+        for (int i = 0; i < buttons.size(); i++) {
+            String label = buttons.get(i)[0];
+            if (i > 0) line.append(Component.literal("      "));
+            line.append(Component.literal(buttons.get(i)[1] + label).withStyle(style -> style.withClickEvent(
+                    new ClickEvent.RunCommand("gm simbutton " + label.replace("\u00dc", "UE") + " " + type + " " + name))));
+        }
+        return line;
+    }
+
+    /** What the server answers to a click on one of the transmission's buttons. */
+    private static int simulateButton(FabricClientCommandSource src, String label, boolean death, String name) {
+        String me = src.getPlayer().getScoreboardName();
+        String funk = "[FUNK] (Sanit\u00e4ter) " + me + " \u00bb ";
+        src.sendFeedback(Component.literal("\u00a77[Sim] Button \u00a7f" + label + "\u00a77 f\u00fcr \u00a7f" + name));
+        switch (label) {
+            case "ANNEHMEN" -> {
+                if (death) {
+                    simulateChatMessage(funk + "Ich bin nun auf dem Weg zu der Todesmeldung von " + name + ".");
+                    // The server sends the block again for an accepted Todesmeldung, now with FREIGEBEN.
+                    simulateChatMessage("  ----- DATEN\u00dcBERMITTLUNG VON ZENTRALE -----");
+                    simulateChatMessage(" - Betroffener: " + name);
+                    simulateChatMessage(" - Verbleibende Zeit: 4 Minuten, 40 Sekunden");
+                    simulateChatMessage(" - Todesursache: T\u00f6tungsdelikt");
+                    simulateChatMessage(" - Distanz: 2700 Meter");
+                    simulateChatMessage("\u00a7e - Ortung: \u00a7f\u00a7fX: -1488 Y: 63 Z: -2095 (Offenbach Nord)");
+                    simulateChatMessage(" - Auf dem Weg: " + me);
+                    simulateChatMessage("");
+                    simulateChatMessage(buttonLine(name, true, true));
+                } else {
+                    simulateChatMessage(funk + "Ich bin nun auf dem Weg zu dem Notruf von " + name + ".");
+                }
+            }
+            case "FREIGEBEN" -> simulateChatMessage(funk + "Ich kann die Todesmeldung von " + name + " nicht mehr erledigen. Bitte \u00fcbernehmen!");
+            case "ZURUECKWEISEN" -> simulateChatMessage("\u00bb \u2139 Gib einen Grund an, weshalb du den Notruf zur\u00fcckweisen willst. (Gib 'stop' in den Chat ein, um die Eingabe abzubrechen.)");
+            default -> src.sendFeedback(Component.literal("\u00a77[Sim] Der Server w\u00fcrde jetzt " + label + " ausf\u00fchren."));
+        }
+        return 1;
+    }
+
+    /**
      * Simulates a server system message by feeding it through the real MessageHandler.
      */
     private static void simulateChatMessage(String rawMessage) {
-        Component text = Component.literal(rawMessage);
+        simulateChatMessage(Component.literal(rawMessage));
+    }
+
+    private static void simulateChatMessage(Component text) {
         Minecraft client = Minecraft.getInstance();
         if (client != null) {
             ChatListener handler = client.getChatListener();

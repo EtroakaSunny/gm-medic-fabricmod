@@ -15,6 +15,16 @@ you can focus on the response.
 - **Emergency call HUD** — an on-screen list of all active emergency calls (*Notrufe*)
   and death reports (*Todesmeldungen*), including caller, reason and assignment state.
   Supports a **compact** layout for large GUI scales.
+- **Clickable Notrufe** (optional, HUD settings → *Klickbare Notrufe*) — the panel takes
+  over the transmission's chat buttons. Calls nobody has accepted yet flash. With the
+  chat open, a left click on an open call accepts it (*ANNEHMEN*); a right click — or a
+  click on your own accepted call — opens all of the call's buttons: *Freigeben*,
+  *Anrufen*, *Melden* and *Zurückweisen* (with a reason field; left empty, the chat
+  opens when the server asks for it). Only buttons the server actually sent for that
+  call are offered, and they run exactly as a click in the chat would.
+  - *Notrufe im Chat ausblenden* additionally keeps the transmission blocks out of the
+    chat. They are still parsed and reported to the API server; if two transmissions
+    collide (the panel shows *⚠ Fehler*), the hidden lines are shown after all.
 - **Automatic chat parsing** — detects, straight from the GermanMiner `[FUNK]` and
   system chat: going **on/off duty**, **new emergency calls**, **death reports**, and a
   call being **accepted, rejected, reached or withdrawn** — no manual input needed.
