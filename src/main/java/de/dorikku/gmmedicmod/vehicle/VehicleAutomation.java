@@ -220,7 +220,7 @@ public final class VehicleAutomation {
         Inventory inv = player.getInventory();
 
         if (isGearItem(inv.getSelectedItem())) {
-            player.drop(false);
+            if (client.gameMode != null) client.gameMode.dropItem(player, false);
             GMMedic.LOGGER.info("[GM-Medic] Gear item '{}' dropped to set gear shift", GEAR_ITEM_NAME);
             return;
         }
@@ -235,7 +235,7 @@ public final class VehicleAutomation {
         if (player.connection != null) {
             player.connection.send(new ServerboundSetCarriedItemPacket(slot));
         }
-        player.drop(false);
+        if (client.gameMode != null) client.gameMode.dropItem(player, false);
         GMMedic.LOGGER.info("[GM-Medic] Selected '{}' from hotbar slot {} and dropped it to set gear shift",
                 GEAR_ITEM_NAME, slot);
     }
