@@ -44,6 +44,11 @@ public class HudConfig {
      */
     private boolean hideCallChatEnabled = false;
     /**
+     * While the transmission blocks are hidden from the chat, a new call shows the player's own
+     * distance to it on the panel for its first seconds — the "Distanz" line they no longer see.
+     */
+    private boolean callDistanceEnabled = true;
+    /**
      * Whether the green "may donate" chat note is shown — posted under a player's own chat/funk
      * line when they mention "Blut", and under an emergency call once the caller's status is
      * known. Independent of {@link #bloodChatNoteCannotDonateEnabled} so a medic can silence
@@ -105,6 +110,8 @@ public class HudConfig {
                         clickableCallsEnabled = Boolean.parseBoolean(line.substring("clickableCallsEnabled=".length()).trim());
                     } else if (line.startsWith("hideCallChatEnabled=")) {
                         hideCallChatEnabled = Boolean.parseBoolean(line.substring("hideCallChatEnabled=".length()).trim());
+                    } else if (line.startsWith("callDistanceEnabled=")) {
+                        callDistanceEnabled = Boolean.parseBoolean(line.substring("callDistanceEnabled=".length()).trim());
                     } else if (line.startsWith("callTimerEnabled=")) {
                         callTimerEnabled = Boolean.parseBoolean(line.substring("callTimerEnabled=".length()).trim());
                     } else if (line.startsWith("bloodChatNoteCanDonateEnabled=")) {
@@ -171,6 +178,8 @@ public class HudConfig {
                     "# Keep the transmission blocks out of the chat while the panel is clickable\n" +
                     "# (still parsed and reported; shown after all when two transmissions collided)\n" +
                     "hideCallChatEnabled=" + hideCallChatEnabled + "\n" +
+                    "# While the blocks are hidden, show your own distance to a new call for its first 5s\n" +
+                    "callDistanceEnabled=" + callDistanceEnabled + "\n" +
                     "# Show the green chat note when a player who mentioned \"Blut\" (or an emergency\n" +
                     "# call's caller) may donate blood again\n" +
                     "bloodChatNoteCanDonateEnabled=" + bloodChatNoteCanDonateEnabled + "\n" +
@@ -210,6 +219,15 @@ public class HudConfig {
 
     public void setHideCallChatEnabled(boolean enabled) {
         hideCallChatEnabled = enabled;
+        save();
+    }
+
+    public boolean isCallDistanceEnabled() {
+        return callDistanceEnabled;
+    }
+
+    public void setCallDistanceEnabled(boolean enabled) {
+        callDistanceEnabled = enabled;
         save();
     }
 
