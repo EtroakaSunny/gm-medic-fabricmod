@@ -56,8 +56,13 @@ public final class SirenMenu {
     private static AbstractContainerMenu menu;
     private static int restoreSlot = -1;
     private static int settleTicks = 0;
-    /** Until this time a late "Auto-Menü" from an abandoned session is swallowed too. */
+    /**
+     * Until this time a late "Auto-Menü" from our session is swallowed too. Ended at once by the
+     * player's own F press ({@link #onSwapHandsSent()}), so their menu always shows.
+     */
     private static long swallowLateUntilMs = 0L;
+    /** True while our own F packet is being sent, to tell it apart from the player's. */
+    private static boolean sendingOwnSwap = false;
 
     private SirenMenu() {}
 
@@ -101,9 +106,25 @@ public final class SirenMenu {
 
     /** Exactly what the swap-hands key (F) sends; with the knob in hand the server answers with the Auto-Menü. */
     private static void pressSwapHands(LocalPlayer player) {
-        player.connection.send(new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+        sendingOwnSwap = true;
+        try {
+            player.connection.send(new ServerboundPlayerActionPacket(
+                    ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+        } finally {
+            sendingOwnSwap = false;
+        }
         enter(Phase.WAITING_FOR_MENU);
+    }
+
+    /**
+     * Called for every swap-hands packet sent ({@code ClientCommonPacketListenerMixin}). One that
+     * isn't ours is the player pressing F: the Auto-Menü they asked for must show, so stop
+     * swallowing late copies right away.
+     */
+    public static void onSwapHandsSent() {
+        if (sendingOwnSwap || System.currentTimeMillis() > swallowLateUntilMs) return;
+        swallowLateUntilMs = 0L;
+        GMMedic.LOGGER.info("[GM-Medic] Player pressed F — their Auto-Menü opens normally");
     }
 
     /**
