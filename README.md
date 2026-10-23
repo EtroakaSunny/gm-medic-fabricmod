@@ -32,9 +32,12 @@ you can focus on the response.
   - **Siren** — toggle `/vehicles sirene` on while you have an accepted call.
   - **Sneak-exit** — turn the siren off first and briefly delay your dismount when you
     sneak out (configurable delay). Helicopters are detected and skipped.
+  - **Third person** — switch to the third-person view while seated and back to your
+    previous view when you get out. Off by default; works on and off duty. If you
+    change the view yourself while seated, it is left alone on exit.
 
-  Each feature can be toggled, and set to run **always** (even off duty), from the
-  settings menu (`/gmmenu`).
+  Each feature can be toggled from the settings menu (`/gmmenu`); motor, gear and siren
+  can also be set to run **always** (even off duty).
 - **Microscope diagnosis checklist** — while the server's `Mikroskop | <patient>` menu is
   open, a panel next to it lists the 13 dyes from the Diagnostik-Leitfaden with a checkbox
   each, so you can tick off what you saw. A slide carries every one of them except at most

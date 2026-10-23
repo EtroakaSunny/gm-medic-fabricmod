@@ -17,6 +17,7 @@ public class VehicleConfig {
    private boolean sirenEnabled = true;
    private boolean sirenAlways = false;
    private int exitDelayTicks = 1;
+   private boolean thirdPersonEnabled = false;
 
    private VehicleConfig() {
    }
@@ -70,6 +71,9 @@ public class VehicleConfig {
                         case "sirenAlways":
                            this.sirenAlways = Boolean.parseBoolean(value);
                            break;
+                        case "thirdPersonEnabled":
+                           this.thirdPersonEnabled = Boolean.parseBoolean(value);
+                           break;
                         case "exitDelayTicks":
                            try {
                               this.exitDelayTicks = clampDelay(Integer.parseInt(value));
@@ -82,9 +86,10 @@ public class VehicleConfig {
 
             GMMedic.LOGGER
                .info(
-                  "[VehicleConfig] Loaded: motor={}/{}, gear={}/{}, siren={}/{}, exitDelay={}",
+                  "[VehicleConfig] Loaded: motor={}/{}, gear={}/{}, siren={}/{}, exitDelay={}, thirdPerson={}",
                   new Object[]{
-                     this.motorEnabled, this.motorAlways, this.gearEnabled, this.gearAlways, this.sirenEnabled, this.sirenAlways, this.exitDelayTicks
+                     this.motorEnabled, this.motorAlways, this.gearEnabled, this.gearAlways, this.sirenEnabled, this.sirenAlways, this.exitDelayTicks,
+                     this.thirdPersonEnabled
                   }
                );
          } catch (Exception var14) {
@@ -113,6 +118,8 @@ public class VehicleConfig {
             + this.sirenAlways
             + "\n# Ticks to delay a sneak dismount so the siren turns off first (20 ticks = 1s)\nexitDelayTicks="
             + this.exitDelayTicks
+            + "\n# Switch to third person while riding a vehicle, back to the previous view when leaving\nthirdPersonEnabled="
+            + this.thirdPersonEnabled
             + "\n";
          Files.writeString(configPath, content);
          GMMedic.LOGGER.info("[VehicleConfig] Saved config");
@@ -176,6 +183,15 @@ public class VehicleConfig {
 
    public void setSirenAlways(boolean v) {
       this.sirenAlways = v;
+      this.save();
+   }
+
+   public boolean isThirdPersonEnabled() {
+      return this.thirdPersonEnabled;
+   }
+
+   public void setThirdPersonEnabled(boolean v) {
+      this.thirdPersonEnabled = v;
       this.save();
    }
 
