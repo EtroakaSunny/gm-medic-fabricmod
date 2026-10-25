@@ -1,5 +1,6 @@
 package de.dorikku.gmmedicmod.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -105,7 +106,7 @@ public class HudPositionScreen extends AbstractGMMedicScreen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != 0) return false;
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
 
         double mouseX = event.x();
         double mouseY = event.y();

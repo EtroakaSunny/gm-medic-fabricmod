@@ -1,16 +1,15 @@
 package de.dorikku.gmmedicmod.diagnosis;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import de.dorikku.gmmedicmod.config.MicroscopeConfig;
 import de.dorikku.gmmedicmod.mixin.ContainerScreenAccessor;
 import de.dorikku.gmmedicmod.network.ApiConnection;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.player.Inventory;
@@ -93,6 +92,25 @@ public final class MicroscopeOverlay {
         ScreenEvents.AFTER_INIT.register(MicroscopeOverlay::onScreenInit);
     }
 
+    /**
+     * A click on a container screen; returns true when the panel used it and the menu must not
+     * get it. Fed from the screen's own {@code mouseClicked} ({@code AbstractContainerScreenMixin})
+     * rather than Fabric's screen mouse events: LabyMod cancels {@code MouseHandler.onButton}
+     * before those fire and hands the click to the screen itself, with coordinates rescaled by
+     * its own screen scale — so the panel was drawn but never got a click.
+     */
+    public static boolean onMouseClicked(AbstractContainerScreen<?> screen, double x, double y, int button) {
+        String patient = patientOf(screen.getTitle().getString());
+        if (patient == null) return false;
+        int mouseX = (int) x;
+        int mouseY = (int) y;
+        if (handleClick(screen, patient, mouseX, mouseY, button)) return true;
+        // Not the panel's click, so it belongs to the menu: tick the sample it landed on and
+        // let it through untouched.
+        checkClickedSample(screen, patient, mouseX, mouseY, button);
+        return false;
+    }
+
     private static void onScreenInit(Minecraft client, Screen screen, int scaledWidth, int scaledHeight) {
         if (!(screen instanceof AbstractContainerScreen<?> menuScreen)) return;
         String patient = patientOf(screen.getTitle().getString());
@@ -103,13 +121,6 @@ public final class MicroscopeOverlay {
         ScreenEvents.afterTick(screen).register(s -> scanSamples(menuScreen, patient));
         ScreenEvents.afterExtract(screen).register(
                 (s, graphics, mouseX, mouseY, tickProgress) -> render(menuScreen, patient, graphics, mouseX, mouseY));
-        ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
-            if (handleClick(menuScreen, patient, event)) return false;
-            // Not the panel's click, so it belongs to the menu: tick the sample it landed on and
-            // let it through untouched.
-            checkClickedSample(menuScreen, patient, event);
-            return true;
-        });
     }
 
     /**
@@ -448,16 +459,14 @@ public final class MicroscopeOverlay {
      * it — where a click beside the menu would try to drop whatever the medic is carrying.
      * Every button is swallowed for that reason, but only the left one acts.
      */
-    private static boolean handleClick(AbstractContainerScreen<?> screen, String patient, MouseButtonEvent event) {
+    private static boolean handleClick(AbstractContainerScreen<?> screen, String patient, int mouseX, int mouseY, int button) {
         if (!isActive()) return false;
         Font font = screen.getFont();
         MicroscopeSession session = MicroscopeDiagnosisManager.getInstance().session(patient);
         Panel panel = measure(screen, patient, session, font);
 
-        int mouseX = (int) event.x();
-        int mouseY = (int) event.y();
         if (!isInside(mouseX, mouseY, panel.x(), panel.y(), panel.width(), panel.height())) return false;
-        if (event.button() != 0) return true;
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return true;
 
         if (isOverReset(panel, font, mouseX, mouseY)) {
             MicroscopeDiagnosisManager.getInstance().reset(patient);
@@ -485,9 +494,9 @@ public final class MicroscopeOverlay {
      * Clicking only ever ticks, never un-ticks, because the same dye shows up on several pages
      * and a second click on it must not undo the first.</p>
      */
-    private static void checkClickedSample(AbstractContainerScreen<?> screen, String patient, MouseButtonEvent event) {
-        if (!isActive() || !MicroscopeConfig.getInstance().isClickToCheck() || event.button() != 0) return;
-        Slot slot = sampleSlotAt(screen, (int) event.x(), (int) event.y());
+    private static void checkClickedSample(AbstractContainerScreen<?> screen, String patient, int mouseX, int mouseY, int button) {
+        if (!isActive() || !MicroscopeConfig.getInstance().isClickToCheck() || button != InputConstants.MOUSE_BUTTON_LEFT) return;
+        Slot slot = sampleSlotAt(screen, mouseX, mouseY);
         if (slot == null) return;
         DyeColor color = MicroscopeColors.colorOf(slot.getItem());
         if (color != null) {

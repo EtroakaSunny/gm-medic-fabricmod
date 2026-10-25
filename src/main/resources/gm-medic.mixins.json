@@ -3,6 +3,7 @@
 	"package": "de.dorikku.gmmedicmod.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"AbstractContainerScreenMixin",
 		"BossBarHudAccessor",
 		"ClientCommonPacketListenerMixin",
 		"ContainerScreenAccessor",

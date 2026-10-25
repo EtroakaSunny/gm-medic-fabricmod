@@ -1,5 +1,6 @@
 package de.dorikku.gmmedicmod.hud;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import de.dorikku.gmmedicmod.GMMedic;
 import de.dorikku.gmmedicmod.config.HudConfig;
 import de.dorikku.gmmedicmod.gui.CallActionScreen;
@@ -87,7 +88,7 @@ public final class CallHudInteraction {
         EmergencyCall call = bounds.call();
         Minecraft client = Minecraft.getInstance();
 
-        if (button == 0 && EmergencyCallHud.isOpen(call)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && EmergencyCallHud.isOpen(call)) {
             ClickEvent accept = CallActions.get(call).get(CallActions.ACCEPT);
             if (accept != null) {
                 GMMedic.LOGGER.info("[GM-Medic] Accepting {} from the panel", call.getCallerName());
@@ -96,7 +97,7 @@ public final class CallHudInteraction {
                 return true;
             }
         }
-        if (button == 0 || button == 1) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT) {
             client.gui.setScreen(new CallActionScreen(call, null));
         }
         return true;
