@@ -39,6 +39,7 @@ public final class CallChatFilter {
     private static final List<HiddenLine> hidden = new ArrayList<>();
     /** Entangled calls already judged, so an old collision doesn't reveal every later block too. */
     private static final Set<EmergencyCall> judgedEntangled = Collections.newSetFromMap(new IdentityHashMap<>());
+    private static boolean revealing = false;
 
     private CallChatFilter() {}
 
@@ -121,13 +122,29 @@ public final class CallChatFilter {
         }
     }
 
+    /**
+     * True while {@link #reveal} puts lines back. {@code sendSystemMessage} runs them through the
+     * chat events again, so {@link ChatMessageHandler} must let them pass untouched.
+     */
+    public static boolean isRevealing() {
+        return revealing;
+    }
+
     /** Puts the hidden lines back into the chat. Local display only — nothing is re-parsed or sent. */
     private static void reveal(String why) {
+        // Copied and cleared first: re-entering the chat events while iterating {@code hidden}
+        // used to add to it mid-loop and crash with a ConcurrentModificationException.
+        List<HiddenLine> lines = new ArrayList<>(hidden);
+        hidden.clear();
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            for (HiddenLine line : hidden) client.player.sendSystemMessage(line.message());
+            revealing = true;
+            try {
+                for (HiddenLine line : lines) client.player.sendSystemMessage(line.message());
+            } finally {
+                revealing = false;
+            }
         }
-        GMMedic.LOGGER.info("[GM-Medic] Showing {} hidden transmission line(s): {}", hidden.size(), why);
-        hidden.clear();
+        GMMedic.LOGGER.info("[GM-Medic] Showing {} hidden transmission line(s): {}", lines.size(), why);
     }
 }

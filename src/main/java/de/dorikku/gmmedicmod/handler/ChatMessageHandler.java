@@ -78,6 +78,8 @@ public class ChatMessageHandler {
      */
     public static boolean onGameMessage(Component message, boolean overlay) {
         if (overlay) return true;
+        // Our own re-shown transmission lines: already parsed once, must not be hidden or parsed again.
+        if (CallChatFilter.isRevealing()) return true;
         // Unverified players get nothing from the mod at all — not even duty detection,
         // so isInDuty() can never flip true and everything gated on it stays off too.
         if (!ApiConnection.getInstance().isFeatureUnlocked()) {
